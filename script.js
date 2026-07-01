@@ -249,8 +249,6 @@ window.addEventListener('resize', () => {
 });
 
 mapSurface.addEventListener('wheel', handleWheel, { passive: false });
-zoomInButton.addEventListener('click', () => adjustZoom(1.2));
-zoomOutButton.addEventListener('click', () => adjustZoom(1 / 1.2));
 
 mapSurface.addEventListener('pointerdown', beginDrag);
 mapSurface.addEventListener('pointermove', handleDrag);
