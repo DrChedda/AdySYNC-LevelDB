@@ -234,7 +234,7 @@ function endDrag() {
 mapWorld.style.width = `${worldSize}px`;
 mapWorld.style.height = `${worldSize}px`;
 
-fetch('./coordinateFiles/infiniteLandsWalls.json')
+fetch('./coordinateFiles/InfiniteLandsWalls.json')
   .then(response => response.json())
   .then(data => {
     wallData = data;
