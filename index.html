@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Map of Level-0</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="map-app">
+      <div class="map-surface" id="mapSurface" aria-label="Backrooms map canvas">
+        <div class="map-world" id="mapWorld" aria-hidden="true">
+            <div class="walls-layer"></div>
+            <div class="axis-overlay" aria-hidden="true">
+                <div class="axis-line axis-line--vertical"></div>
+                <div class="axis-line axis-line--horizontal"></div>
+            </div>
+        </div>
+
+        <div class="coord-readout" aria-label="Current coordinates">
+          <span>Level-0</span>
+          <strong data-coordinate>X 0, Z 0</strong>
+        </div>
+
+        <div class="zoom-controls" aria-label="Map zoom controls">
+          <button class="zoom-button" data-zoom-out aria-label="Zoom out">−</button>
+          <span class="zoom-level" data-zoom-label>100%</span>
+          <button class="zoom-button" data-zoom-in aria-label="Zoom in">+</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
