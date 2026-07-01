@@ -26,7 +26,7 @@ let startOffsetX = 0;
 let startOffsetY = 0;
 let zoom = getMinZoom();
 
-const maxZoom = 15.0;
+const maxZoom = 5.0;
 
 function applyTransform() {
     const roundedX = Math.round(offsetX);
@@ -100,17 +100,38 @@ function updateDynamicGrid() {
     const minorStep = majorStep / 5;
     const halfWorld = worldSize / 2;
 
-    const minWorldX = (-centerX - offsetX) / zoom;
-    const maxWorldX = (rect.width - centerX - offsetX) / zoom;
-    const minWorldY = (-centerY - offsetY) / zoom;
-    const maxWorldY = (rect.height - centerY - offsetY) / zoom;
+    const minWorldZ = (-centerX - offsetX) / zoom;
+    const maxWorldZ = (rect.width - centerX - offsetX) / zoom;
+    const minWorldX = (-centerY - offsetY) / zoom;
+    const maxWorldX = (rect.height - centerY - offsetY) / zoom;
 
+    const startZ = Math.floor(Math.max(-worldRadius, -maxWorldZ) / minorStep) * minorStep;
+    const endZ = Math.ceil(Math.min(worldRadius, -minWorldZ) / minorStep) * minorStep;
     const startX = Math.floor(Math.max(-worldRadius, minWorldX) / minorStep) * minorStep;
     const endX = Math.ceil(Math.min(worldRadius, maxWorldX) / minorStep) * minorStep;
-    const startY = Math.floor(Math.max(-worldRadius, minWorldY) / minorStep) * minorStep;
-    const endY = Math.ceil(Math.min(worldRadius, maxWorldY) / minorStep) * minorStep;
 
-    if ((endX - startX) / minorStep > 300) return;
+    if (((endZ - startZ) / minorStep > 300) || ((endX - startX) / minorStep > 300)) return;
+
+    // Render Vertical lines (Z Axis)
+    for (let z = startZ; z <= endZ; z += minorStep) {
+        if (Math.abs(z) > worldRadius) continue;
+        const isMajor = Math.abs(z % majorStep) < (minorStep / 2);
+        if (Math.abs(z) < 0.1) continue;
+
+        const line = document.createElement('div');
+        line.className = `dynamic-grid-line dynamic-grid-line--vertical ${isMajor ? 'major' : 'minor'}`;
+        line.style.left = `${halfWorld - (z * studSize)}px`;
+        axisOverlay.appendChild(line);
+
+        if (isMajor) {
+            const label = document.createElement('span');
+            label.className = 'axis-label axis-label--horizontal';
+            label.textContent = `Z ${Math.round(z).toLocaleString('en-US')}`;
+            label.style.left = `${halfWorld - (z * studSize)}px`;
+            label.style.top = `${halfWorld}px`;
+            axisOverlay.appendChild(label);
+        }
+    }
 
     for (let x = startX; x <= endX; x += minorStep) {
         if (Math.abs(x) > worldRadius) continue;
@@ -118,41 +139,20 @@ function updateDynamicGrid() {
         if (Math.abs(x) < 0.1) continue;
 
         const line = document.createElement('div');
-        line.className = `dynamic-grid-line dynamic-grid-line--vertical ${isMajor ? 'major' : 'minor'}`;
-        line.style.left = `${halfWorld - x}px`;
-        axisOverlay.appendChild(line);
-
-        if (isMajor) {
-            const label = document.createElement('span');
-            label.className = 'axis-label axis-label--horizontal';
-            label.textContent = `Z ${Math.round(x).toLocaleString('en-US')}`;
-            label.style.left = `${halfWorld - x}px`;
-            label.style.top = `${halfWorld}px`;
-            axisOverlay.appendChild(label);
-        }
-    }
-
-    for (let y = startY; y <= endY; y += minorStep) {
-        if (Math.abs(y) > worldRadius) continue;
-        const isMajor = Math.abs(y % majorStep) < (minorStep / 2);
-        if (Math.abs(y) < 0.1) continue;
-
-        const line = document.createElement('div');
         line.className = `dynamic-grid-line dynamic-grid-line--horizontal ${isMajor ? 'major' : 'minor'}`;
-        line.style.top = `${halfWorld + y}px`;
+        line.style.top = `${halfWorld + (x * studSize)}px`;
         axisOverlay.appendChild(line);
 
         if (isMajor) {
             const label = document.createElement('span');
             label.className = 'axis-label axis-label--vertical';
-            label.textContent = `X ${Math.round(y).toLocaleString('en-US')}`;
+            label.textContent = `X ${Math.round(x).toLocaleString('en-US')}`;
             label.style.left = `${halfWorld}px`;
-            label.style.top = `${halfWorld + y}px`;
+            label.style.top = `${halfWorld + (x * studSize)}px`;
             axisOverlay.appendChild(label);
         }
     }
 }
-
 function getStudCoordinates(clientX, clientY) {
     const rect = mapSurface.getBoundingClientRect();
     const centerX = rect.width / 2;
