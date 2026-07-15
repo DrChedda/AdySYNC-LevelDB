@@ -2,6 +2,21 @@
   {
     "x": -1524,
     "z": -1777,
-    "name": "Beacon"
+    "name": "Beacon",
+    "layer": 0
+  },
+  {
+    "x": -153250000,
+    "z": 153250000,
+    "name": "Western MEG Capital",
+    "color": "orange",
+    "layer": 2
+  },
+  {
+    "x": 500000,
+    "z": -500000,
+    "name": "Snakepit?",
+    "color": "green",
+    "layer": 1
   }
 ]

@@ -1,129 +1,225 @@
 // map-handler.js
 (function() {
     const mapSurface = document.querySelector('.map-surface');
-    const mapWorld = document.querySelector('.map-world');
     const axisOverlay = document.querySelector('.axis-overlay');
     const coordinateOutput = document.querySelector('[data-coordinate]');
     const zoomLabel = document.querySelector('[data-zoom-label]');
 
-    const studSize = 1;
-    const worldRadius = 10000;
-    const worldSize = worldRadius * 2 * studSize;
+    const axisLineV = document.querySelector('.axis-line--vertical');
+    const axisLineH = document.querySelector('.axis-line--horizontal');
+    const labelsLayer = document.querySelector('.labels-layer');
+    const wallsLayer = document.querySelector('.walls-layer');
 
-    function getMinZoom() {
-        return Math.min(window.innerWidth, window.innerHeight) / worldSize;
-    }
+    const LIMIT = 1000000000;
+
+    let centerXCoord = 0; 
+    let centerZCoord = 0; 
+    let studsPerPixel = 10; 
 
     let dragging = false;
     let startX = 0, startY = 0;
-    let offsetX = 0, offsetY = 0;
-    let startOffsetX = 0, startOffsetY = 0;
-    let zoom = getMinZoom();
-    
-    const maxZoom = 5.0; 
+    let startCenterX = 0, startCenterZ = 0;
 
-    function applyTransform() {
-        const roundedX = Math.round(offsetX);
-        const roundedY = Math.round(offsetY);
-
-        mapWorld.style.transform = `translate(-50%, -50%) translate(${roundedX}px, ${roundedY}px) scale(${zoom})`;
-
-        const inverseZoom = 1 / zoom;
-        document.documentElement.style.setProperty('--inverse-zoom', inverseZoom.toString());
-
-        if (zoomLabel) {
-            zoomLabel.textContent = `${(zoom * 100).toFixed(0)}%`;
-        }
-
-        updateDynamicGrid();
+    function setInitialZoom() {
+        const rect = mapSurface.getBoundingClientRect();
+        const minDimension = Math.min(rect.width, rect.height) || 800;
+        studsPerPixel = 20000 / minDimension; 
     }
 
-    function updateDynamicGrid() {
-        const oldElements = axisOverlay.querySelectorAll('.dynamic-grid-line, .axis-label');
-        oldElements.forEach(el => el.remove());
+    function clamp(val, min, max) {
+        return val < min ? min : (val > max ? max : val);
+    }
 
+    function applyTransform() {
         const rect = mapSurface.getBoundingClientRect();
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
+        const width = rect.width;
+        const height = rect.height;
 
-        const targetPixelStep = 220;
-        const rawStep = targetPixelStep / zoom;
+        centerXCoord = clamp(centerXCoord, -LIMIT, LIMIT);
+        centerZCoord = clamp(centerZCoord, -LIMIT, LIMIT);
 
-        const log = Math.log10(rawStep);
-        const basePower = Math.pow(10, Math.floor(log));
-        const ratio = rawStep / basePower;
+        if (zoomLabel) {
+            zoomLabel.textContent = `${((1 / studsPerPixel) * 100).toFixed(4)}%`;
+        }
 
-        let majorStep = basePower;
-        if (ratio >= 5) majorStep = basePower * 5;
-        else if (ratio >= 2) majorStep = basePower * 2;
+        updateDynamicGrid(width, height);
 
-        const minorStep = majorStep / 5;
-        const halfWorld = worldSize / 2;
+        if (window.MapEngine && window.MapEngine.onViewportChange) {
+            window.MapEngine.onViewportChange();
+        }
+    }
 
-        const minWorldZ = (-centerX - offsetX) / zoom;
-        const maxWorldZ = (rect.width - centerX - offsetX) / zoom;
-        const minWorldX = (-centerY - offsetY) / zoom;
-        const maxWorldX = (rect.height - centerY - offsetY) / zoom;
+    function updateDynamicGrid(width, height) {
+        axisOverlay.textContent = ''; 
+        if (labelsLayer) labelsLayer.textContent = '';
 
-        const startZ = Math.floor(Math.max(-worldRadius, -maxWorldZ) / minorStep) * minorStep;
-        const endZ = Math.ceil(Math.min(worldRadius, -minWorldZ) / minorStep) * minorStep;
-        const startX = Math.floor(Math.max(-worldRadius, minWorldX) / minorStep) * minorStep;
-        const endX = Math.ceil(Math.min(worldRadius, maxWorldX) / minorStep) * minorStep;
+        const screenCenterX = width / 2;
+        const screenCenterY = height / 2;
 
-        if (((endZ - startZ) / minorStep > 300) || ((endX - startX) / minorStep > 300)) return;
+        const zToScreen = (z) => screenCenterX - ((z - centerZCoord) / studsPerPixel);
+        const xToScreen = (x) => screenCenterY + ((x - centerXCoord) / studsPerPixel);
 
-        for (let z = startZ; z <= endZ; z += minorStep) {
-            if (Math.abs(z) > worldRadius) continue;
-            const isMajor = Math.abs(z % majorStep) < (minorStep / 2);
-            if (Math.abs(z) < 0.1) continue;
+        const borderLeft = zToScreen(LIMIT);
+        const borderRight = zToScreen(-LIMIT);
+        const borderTop = xToScreen(LIMIT);     
+        const borderBottom = xToScreen(-LIMIT); 
 
-            const line = document.createElement('div');
-            line.className = `dynamic-grid-line dynamic-grid-line--vertical ${isMajor ? 'major' : 'minor'}`;
-            line.style.left = `${halfWorld - (z * studSize)}px`;
-            axisOverlay.appendChild(line);
+        const clipLeft = Math.max(0, borderLeft);
+        const clipRight = Math.min(width, borderRight);
+        const clipTop = Math.max(0, borderBottom);
+        const clipBottom = Math.min(height, borderTop);
 
-            if (isMajor) {
-                const label = document.createElement('span');
-                label.className = 'axis-label axis-label--horizontal';
-                label.textContent = `Z ${Math.round(z).toLocaleString('en-US')}`;
-                label.style.left = `${halfWorld - (z * studSize)}px`;
-                label.style.top = `${halfWorld}px`;
-                axisOverlay.appendChild(label);
+        const originScreenX = zToScreen(0);
+        const originScreenY = xToScreen(0);
+
+        if (axisLineV) {
+            axisLineV.style.left = `${originScreenX}px`;
+            axisLineV.style.top = `${clipTop}px`;
+            axisLineV.style.height = `${clipBottom - clipTop}px`;
+            axisLineV.style.display = (originScreenX < borderLeft || originScreenX > borderRight || clipTop >= clipBottom) ? 'none' : 'block';
+            axisOverlay.appendChild(axisLineV);
+        }
+        if (axisLineH) {
+            axisLineH.style.top = `${originScreenY}px`;
+            axisLineH.style.left = `${clipLeft}px`;
+            axisLineH.style.width = `${clipRight - clipLeft}px`;
+            axisLineH.style.display = (originScreenY < borderBottom || originScreenY > borderTop || clipLeft >= clipRight) ? 'none' : 'block';
+            axisOverlay.appendChild(axisLineH);
+        }
+
+        const drawBorder = (left, top, w, h, isVertical) => {
+            const border = document.createElement('div');
+            border.className = 'world-border-line';
+            border.style.left = `${left}px`;
+            border.style.top = `${top}px`;
+            border.style.width = isVertical ? '3px' : `${w}px`;
+            border.style.height = isVertical ? `${h}px` : '3px';
+            border.style.transform = isVertical ? 'translateX(-50%)' : 'translateY(-50%)';
+            axisOverlay.appendChild(border);
+        };
+
+        const borderHeight = clipBottom - clipTop;
+        const borderWidth = clipRight - clipLeft;
+
+        if (borderHeight > 0) {
+            if (borderLeft >= 0 && borderLeft <= width) drawBorder(borderLeft, clipTop, 3, borderHeight, true);
+            if (borderRight >= 0 && borderRight <= width) drawBorder(borderRight, clipTop, 3, borderHeight, true);
+        }
+        if (borderWidth > 0) {
+            if (borderTop >= 0 && borderTop <= height) drawBorder(clipLeft, borderTop, borderWidth, 3, false);
+            if (borderBottom >= 0 && borderBottom <= height) drawBorder(clipLeft, borderBottom, borderWidth, 3, false);
+        }
+
+        const visibleWidthInStuds = width * studsPerPixel;
+
+        if (wallsLayer) {
+            if (visibleWidthInStuds > 20000000) {
+                wallsLayer.classList.add('hidden');
+            } else {
+                wallsLayer.classList.remove('hidden');
             }
         }
 
-        // Render Horizontal lines (X Axis)
-        for (let x = startX; x <= endX; x += minorStep) {
-            if (Math.abs(x) > worldRadius) continue;
-            const isMajor = Math.abs(x % majorStep) < (minorStep / 2);
-            if (Math.abs(x) < 0.1) continue;
+        let majorStep, minorStep;
 
+        if (visibleWidthInStuds >= 500000 && visibleWidthInStuds <= 20000000) {
+            majorStep = 1000000;
+            minorStep = 200000;
+        } else {
+            const rawStep = 120 * studsPerPixel; 
+            const log = Math.log10(rawStep);
+            const basePower = Math.pow(10, Math.floor(log));
+            const ratio = rawStep / basePower;
+
+            majorStep = basePower * (ratio >= 5 ? 5 : (ratio >= 2 ? 2 : 1));
+            minorStep = majorStep / 5;
+        }
+
+        const halfMinor = minorStep / 2;
+        const halfMajor = majorStep / 2;
+
+        const minZ = centerZCoord - (screenCenterX * studsPerPixel);
+        const maxZ = centerZCoord + (screenCenterX * studsPerPixel);
+        const minX = centerXCoord - (screenCenterY * studsPerPixel);
+        const maxX = centerXCoord + (screenCenterY * studsPerPixel);
+
+        const startZ = Math.floor((minZ - halfMinor) / minorStep) * minorStep + halfMinor;
+        const endZ = Math.ceil((maxZ - halfMinor) / minorStep) * minorStep + halfMinor;
+        const startX = Math.floor((minX - halfMinor) / minorStep) * minorStep + halfMinor;
+        const endX = Math.ceil((maxX - halfMinor) / minorStep) * minorStep + halfMinor;
+
+        if (((endZ - startZ) / minorStep > 500) || ((endX - startX) / minorStep > 500)) return;
+
+        for (let z = startZ; z <= endZ; z += minorStep) {
+            if (Math.abs(z) > LIMIT) continue; 
+
+            const screenX = zToScreen(z);
+            if (screenX < borderLeft || screenX > borderRight) continue;
+
+            const isMajor = Math.abs((z - halfMajor) % majorStep) < halfMinor;
             const line = document.createElement('div');
-            line.className = `dynamic-grid-line dynamic-grid-line--horizontal ${isMajor ? 'major' : 'minor'}`;
-            line.style.top = `${halfWorld + (x * studSize)}px`;
+            line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
+            line.style.left = `${screenX}px`;
+            line.style.top = `${clipTop}px`;
+            line.style.height = `${borderHeight}px`;
+            line.style.width = isMajor ? '1.5px' : '0.5px';
+            line.style.backgroundColor = isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)';
             axisOverlay.appendChild(line);
 
-            if (isMajor) {
+            if (isMajor && originScreenY >= borderBottom && originScreenY <= borderTop) {
                 const label = document.createElement('span');
-                label.className = 'axis-label axis-label--vertical';
-                label.textContent = `X ${Math.round(x).toLocaleString('en-US')}`;
-                label.style.left = `${halfWorld}px`;
-                label.style.top = `${halfWorld + (x * studSize)}px`;
-                axisOverlay.appendChild(label);
+                label.className = 'axis-label';
+                label.textContent = `Z ${Math.round(z).toLocaleString()}`;
+                label.style.left = `${screenX}px`;
+                label.style.top = `${originScreenY}px`;
+                
+                if (labelsLayer) {
+                    labelsLayer.appendChild(label);
+                } else {
+                    axisOverlay.appendChild(label);
+                }
+            }
+        }
+
+        for (let x = startX; x <= endX; x += minorStep) {
+            if (Math.abs(x) > LIMIT) continue;
+
+            const screenY = xToScreen(x);
+            if (screenY < borderBottom || screenY > borderTop) continue;
+
+            const isMajor = Math.abs((x - halfMajor) % majorStep) < halfMinor;
+            const line = document.createElement('div');
+            line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
+            line.style.left = `${clipLeft}px`;
+            line.style.width = `${borderWidth}px`;
+            line.style.top = `${screenY}px`;
+            line.style.height = isMajor ? '1.5px' : '0.5px';
+            line.style.backgroundColor = isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)';
+            axisOverlay.appendChild(line);
+
+            if (isMajor && originScreenX >= borderLeft && originScreenX <= borderRight) {
+                const label = document.createElement('span');
+                label.className = 'axis-label';
+                label.textContent = `X ${Math.round(x).toLocaleString()}`;
+                label.style.left = `${originScreenX}px`;
+                label.style.top = `${screenY}px`;
+                
+                if (labelsLayer) {
+                    labelsLayer.appendChild(label);
+                } else {
+                    axisOverlay.appendChild(label);
+                }
             }
         }
     }
 
     function getStudCoordinates(clientX, clientY) {
         const rect = mapSurface.getBoundingClientRect();
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
+        const localX = clientX - rect.left;
+        const localY = clientY - rect.top;
 
-        const localX = (clientX - rect.left - centerX - offsetX) / zoom;
-        const localY = (clientY - rect.top - centerY - offsetY) / zoom;
-
-        const x = Math.round(Math.max(-worldRadius, Math.min(worldRadius, localY / studSize)));
-        const z = Math.round(Math.max(-worldRadius, Math.min(worldRadius, -localX / studSize)));
+        const z = clamp(Math.round(centerZCoord - ((localX - rect.width / 2) * studsPerPixel)), -LIMIT, LIMIT);
+        const x = clamp(Math.round(centerXCoord + ((localY - rect.height / 2) * studsPerPixel)), -LIMIT, LIMIT);
 
         return { x, z };
     }
@@ -131,33 +227,31 @@
     function updateCoordinateDisplay(clientX, clientY) {
         const { x, z } = getStudCoordinates(clientX, clientY);
         if (coordinateOutput) {
-            coordinateOutput.textContent = `X ${x}, Z ${z}`;
-        }
-    }
+            const commaX = Math.round(x).toLocaleString('en-US');
+            const commaZ = Math.round(z).toLocaleString('en-US');
 
-    function adjustZoom(factor) {
-        zoom = Math.max(getMinZoom(), Math.min(maxZoom, zoom * factor));
-        applyTransform();
+
+            coordinateOutput.textContent = `X ${commaX}, Z ${commaZ}`;
+        }
     }
 
     function handleWheel(event) {
         event.preventDefault();
 
         const rect = mapSurface.getBoundingClientRect();
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
         const cursorX = event.clientX - rect.left;
         const cursorY = event.clientY - rect.top;
 
-        const worldXBefore = (cursorX - centerX - offsetX) / zoom;
-        const worldYBefore = (cursorY - centerY - offsetY) / zoom;
+        const { x: targetWorldX, z: targetWorldZ } = getStudCoordinates(event.clientX, event.clientY);
 
-        const direction = event.deltaY < 0 ? 1.2 : 1 / 1.2;
-        const nextZoom = Math.max(getMinZoom(), Math.min(maxZoom, zoom * direction));
+        const zoomFactor = event.deltaY < 0 ? 1 / 1.2 : 1.2;
+        studsPerPixel = Math.max(0.00001, Math.min(4000000, studsPerPixel * zoomFactor));
 
-        offsetX = cursorX - centerX - worldXBefore * nextZoom;
-        offsetY = cursorY - centerY - worldYBefore * nextZoom;
-        zoom = nextZoom;
+        const halfWidth = rect.width / 2;
+        const halfHeight = rect.height / 2;
+
+        centerZCoord = clamp(targetWorldZ + ((cursorX - halfWidth) * studsPerPixel), -LIMIT, LIMIT);
+        centerXCoord = clamp(targetWorldX - ((cursorY - halfHeight) * studsPerPixel), -LIMIT, LIMIT);
 
         applyTransform();
     }
@@ -168,8 +262,8 @@
         dragging = true;
         startX = event.clientX;
         startY = event.clientY;
-        startOffsetX = offsetX;
-        startOffsetY = offsetY;
+        startCenterX = centerXCoord;
+        startCenterZ = centerZCoord;
 
         mapSurface.classList.add('dragging');
         mapSurface.setPointerCapture(event.pointerId);
@@ -181,8 +275,8 @@
             return;
         }
 
-        offsetX = startOffsetX + (event.clientX - startX);
-        offsetY = startOffsetY + (event.clientY - startY);
+        centerZCoord = clamp(startCenterZ + ((event.clientX - startX) * studsPerPixel), -LIMIT, LIMIT);
+        centerXCoord = clamp(startCenterX - ((event.clientY - startY) * studsPerPixel), -LIMIT, LIMIT);
 
         applyTransform();
         updateCoordinateDisplay(event.clientX, event.clientY);
@@ -194,13 +288,8 @@
         mapSurface.classList.remove('dragging');
     }
 
-    mapWorld.style.width = `${worldSize}px`;
-    mapWorld.style.height = `${worldSize}px`;
-
-    window.addEventListener('resize', () => {
-        zoom = Math.max(getMinZoom(), zoom);
-        applyTransform();
-    });
+    setInitialZoom();
+    window.addEventListener('resize', applyTransform);
 
     mapSurface.addEventListener('wheel', handleWheel, { passive: false });
     mapSurface.addEventListener('pointerdown', beginDrag);
@@ -214,11 +303,13 @@
         }
     });
 
-window.MapEngine = {
-        worldSize: worldSize,
-        studSize: studSize,
+    setTimeout(applyTransform, 100);
+
+    window.MapEngine = {
         applyTransform: applyTransform,
-        adjustZoom: adjustZoom,
-        get zoom() { return zoom; } 
+        get studsPerPixel() { return studsPerPixel; },
+        get centerCoords() { return { x: centerXCoord, z: centerZCoord }; },
+        get LIMIT() { return LIMIT; },
+        onViewportChange: null 
     };
 })();
