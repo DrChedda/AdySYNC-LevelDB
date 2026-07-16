@@ -215,7 +215,7 @@
         const rect = mapSurface.getBoundingClientRect();
         const targetWorld = toWorld(event.clientX - rect.left, event.clientY - rect.top, rect);
 
-        studsPerPixel = Math.max(0.00001, Math.min(4000000, studsPerPixel * (event.deltaY < 0 ? 1 / 1.2 : 1.2)));
+        studsPerPixel = Math.max(0.05, Math.min(4000000, studsPerPixel * (event.deltaY < 0 ? 1 / 1.2 : 1.2)));
 
         centerZCoord = clamp(targetWorld.z + (((event.clientX - rect.left) - rect.width / 2) * studsPerPixel), -LIMIT, LIMIT);
         centerXCoord = clamp(targetWorld.x - (((event.clientY - rect.top) - rect.height / 2) * studsPerPixel), -LIMIT, LIMIT);
