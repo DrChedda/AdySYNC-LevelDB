@@ -21,6 +21,35 @@
         }
     }
 
+    function getDynamicStep(studsPerPixel) {
+        const targetScreenSpacing = 160; 
+        let idealStep = targetScreenSpacing * studsPerPixel;
+
+        if (!idealStep || isNaN(idealStep) || !isFinite(idealStep)) {
+            return 1000000;
+        }
+
+        const magnitude = Math.pow(10, Math.floor(Math.log10(idealStep)));
+        const ratio = idealStep / magnitude;
+
+        let step;
+        if (ratio < 1.5) {
+            step = magnitude;       
+        } else if (ratio < 3.5) {
+            step = magnitude * 2;   
+        } else if (ratio < 7.5) {
+            step = magnitude * 5;   
+        } else {
+            step = magnitude * 10;  
+        }
+
+        if (step <= 0 || isNaN(step) || !isFinite(step)) {
+            return 1000000;
+        }
+
+        return Math.max(100, step);
+    }
+
     function renderActiveViewportContent() {
         if (!window.MapEngine) return;
         
@@ -72,22 +101,22 @@
 
         const labelsLayer = document.querySelector('.labels-layer');
         if (labelsLayer) {
-            const oldSectorLabels = labelsLayer.querySelectorAll('.sector-title-label');
-            oldSectorLabels.forEach(el => el.remove());
+            const oldLabels = labelsLayer.querySelectorAll('.sector-title-label, .dynamic-axis-label');
+            oldLabels.forEach(el => el.remove());
+
+            const halfWidthStuds = (rect.width / 2) * studsPerPixel;
+            const halfHeightStuds = (rect.height / 2) * studsPerPixel;
+
+            const minZ = centerCoords.z - halfWidthStuds;
+            const maxZ = centerCoords.z + halfWidthStuds;
+            const minX = centerCoords.x - halfHeightStuds;
+            const maxX = centerCoords.x + halfHeightStuds;
 
             if (visibleWidthInStuds < 15000000) {
                 const sectorSize = 1000000;
 
                 const baselineZoom = 3200; 
                 const textScale = Math.max(0.01, Math.min(1.0, baselineZoom / studsPerPixel));
-
-                const halfWidthStuds = (rect.width / 2) * studsPerPixel;
-                const halfHeightStuds = (rect.height / 2) * studsPerPixel;
-
-                const minZ = centerCoords.z - halfWidthStuds;
-                const maxZ = centerCoords.z + halfWidthStuds;
-                const minX = centerCoords.x - halfHeightStuds;
-                const maxX = centerCoords.x + halfHeightStuds;
 
                 const startRow = Math.floor((minX + 500000) / sectorSize);
                 const endRow = Math.floor((maxX + 500000) / sectorSize);
@@ -120,16 +149,107 @@
                             sectorLabel.style.position = 'absolute';
                             sectorLabel.style.left = `${screenX}px`;
                             sectorLabel.style.top = `${screenY}px`;
+                            
                             sectorLabel.style.display = 'inline-block';
                             sectorLabel.style.whiteSpace = 'nowrap';
                             sectorLabel.style.width = 'auto';
-                            sectorLabel.style.padding = '12px';
+                            
+                            sectorLabel.style.padding = `${12 * textScale}px`;
                             sectorLabel.style.margin = '0';
                             
                             sectorLabel.style.transformOrigin = '0% 0%';
                             sectorLabel.style.transform = `scale(${textScale})`;
                             
                             labelsLayer.appendChild(sectorLabel);
+                        }
+                    }
+                }
+            }
+
+            const step = getDynamicStep(studsPerPixel);
+
+            const startX = Math.ceil(minX / step) * step;
+            const endX = Math.floor(maxX / step) * step;
+            const axisScreenZ = screenCenterX - ((0 - centerCoords.z) / studsPerPixel);
+
+            if (axisScreenZ > 0 && axisScreenZ < rect.width) {
+                const xCount = (endX - startX) / step;
+                if (xCount > 0 && xCount < 200) {
+                    for (let xVal = startX; xVal <= endX; xVal += step) {
+                        if (Math.abs(xVal) > LIMIT) continue;
+                        if (xVal === 0) continue;
+
+                        const screenY = screenCenterY + ((xVal - centerCoords.x) / studsPerPixel);
+                        if (screenY > 10 && screenY < rect.height - 10) {
+                            const numLabel = document.createElement('div');
+                            numLabel.className = 'dynamic-axis-label';
+                            numLabel.textContent = xVal.toLocaleString();
+                            numLabel.style.position = 'absolute';
+                            numLabel.style.top = `${screenY}px`;
+                            
+                            numLabel.style.fontSize = '11px';
+                            numLabel.style.fontWeight = 'bold';
+                            numLabel.style.color = '#e0e0e0';
+                            numLabel.style.background = 'rgba(15, 15, 15, 0.65)';
+                            numLabel.style.backdropFilter = 'blur(2px)';
+                            numLabel.style.webkitBackdropFilter = 'blur(2px)';
+                            numLabel.style.border = 'none';
+                            numLabel.style.padding = '2px 5px';
+                            numLabel.style.borderRadius = '3px';
+                            numLabel.style.pointerEvents = 'none';
+                            numLabel.style.whiteSpace = 'nowrap';
+                            numLabel.style.fontFamily = 'monospace';
+
+                            numLabel.style.left = `${axisScreenZ - 8}px`;
+                            numLabel.style.transform = 'translate(-100%, -50%)';
+
+                            labelsLayer.appendChild(numLabel);
+                        }
+                    }
+                }
+            }
+
+            const startZ = Math.ceil(minZ / step) * step;
+            const endZ = Math.floor(maxZ / step) * step;
+            const axisScreenX = screenCenterY + ((0 - centerCoords.x) / studsPerPixel);
+
+            if (axisScreenX > 0 && axisScreenX < rect.height) {
+                const zCount = (endZ - startZ) / step;
+                if (zCount > 0 && zCount < 200) {
+                    for (let zVal = startZ; zVal <= endZ; zVal += step) {
+                        if (Math.abs(zVal) > LIMIT) continue;
+
+                        const screenX = screenCenterX - ((zVal - centerCoords.z) / studsPerPixel);
+                        if (screenX > 10 && screenX < rect.width - 10) {
+                            const numLabel = document.createElement('div');
+                            numLabel.className = 'dynamic-axis-label';
+                            numLabel.textContent = zVal.toLocaleString();
+                            numLabel.style.position = 'absolute';
+                            numLabel.style.left = `${screenX}px`;
+                            
+                            numLabel.style.fontSize = '11px';
+                            numLabel.style.fontWeight = 'bold';
+                            numLabel.style.color = '#e0e0e0';
+                            numLabel.style.background = 'rgba(15, 15, 15, 0.65)';
+                            numLabel.style.backdropFilter = 'blur(2px)';
+                            numLabel.style.webkitBackdropFilter = 'blur(2px)';
+                            numLabel.style.border = 'none';
+                            numLabel.style.padding = '2px 5px';
+                            numLabel.style.borderRadius = '3px';
+                            numLabel.style.pointerEvents = 'none';
+                            numLabel.style.whiteSpace = 'nowrap';
+                            numLabel.style.fontFamily = 'monospace';
+
+                            if (zVal === 0) {
+                                numLabel.style.top = `${axisScreenX + 8}px`;
+                                numLabel.style.left = `${screenX - 8}px`;
+                                numLabel.style.transform = 'translate(-100%, 0%)';
+                            } else {
+                                numLabel.style.top = `${axisScreenX + 8}px`;
+                                numLabel.style.transform = 'translateX(-50%)';
+                            }
+
+                            labelsLayer.appendChild(numLabel);
                         }
                     }
                 }
