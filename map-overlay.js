@@ -5,9 +5,18 @@
 
     let wallData = [], pointsData = [], sectorNamesData = {};
 
-    const getColumnLetter = col => col >= 0 ? 
-        String.fromCharCode(65 + (col % 26)) : 
-        String.fromCharCode(90 + ((col + 1) % 26));
+    const getColumnLetter = col => {
+        const isNegative = col < 0;
+        let n = Math.abs(col);
+        let result = "";
+
+        while (n >= 0) {
+            result = String.fromCharCode((n % 26) + 65) + result;
+            n = Math.floor(n / 26) - 1;
+        }
+
+        return isNegative ? `-${result}` : result;
+    };
 
     function getDynamicStep(studsPerPixel) {
         const idealStep = 160 * studsPerPixel;
@@ -118,13 +127,18 @@
                 if ((endRow - startRow) * (endCol - startCol) < 400) {
                     for (let r = startRow; r <= endRow; r++) {
                         for (let c = startCol; c <= endCol; c++) {
-                            const pos = toScreen((r * stepSz) - 500000, (c * stepSz) + 500000);
+                            const worldX = (r * stepSz) - 500000;
+                            const worldZ = (c * stepSz) + 500000;
+
+                            if (Math.abs(worldX) > LIMIT || Math.abs(worldZ) > LIMIT) continue;
+
+                            const pos = toScreen(worldX, worldZ);
 
                             if (isElementInViewport(pos.x, pos.y, 0)) {
-                                const sectorId = `${r}-${getColumnLetter(c)}`;
+                                const sectorId = `${r}|${getColumnLetter(c)}`;
                                 const label = document.createElement('div');
                                 label.className = 'sector-title-label';
-                                label.textContent = sectorNamesData[sectorId] ? `Sector ${sectorNamesData[sectorId]} (${sectorId})` : `Sector ${sectorId}`;
+                                label.textContent = sectorNamesData[sectorId] ? `${sectorNamesData[sectorId]} Sector ${sectorId}` : `Sector ${sectorId}`;
                                 Object.assign(label.style, {
                                     position: 'absolute', left: `${pos.x}px`, top: `${pos.y}px`,
                                     padding: `${12 * scale}px`, transform: `scale(${scale})`
