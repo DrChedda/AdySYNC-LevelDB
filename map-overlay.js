@@ -138,11 +138,15 @@
                                 const sectorId = `${r}|${getColumnLetter(c)}`;
                                 const label = document.createElement('div');
                                 label.className = 'sector-title-label';
-                                label.textContent = sectorNamesData[sectorId] ? `${sectorNamesData[sectorId]} Sector ${sectorId}` : `Sector ${sectorId}`;
+                                label.textContent = sectorNamesData[sectorId] ? `Sector ${sectorNamesData[sectorId]} (${sectorId})` : `Sector ${sectorId}`;
+
                                 Object.assign(label.style, {
-                                    position: 'absolute', left: `${pos.x}px`, top: `${pos.y}px`,
-                                    padding: `${12 * scale}px`, transform: `scale(${scale})`
+                                    position: 'absolute', 
+                                    left: `${pos.x}px`, 
+                                    top: `${pos.y}px`,
+                                    transform: `scale(${scale}) translate(4px, 4px)`
                                 });
+
                                 labelsLayer.appendChild(label);
                             }
                         }
