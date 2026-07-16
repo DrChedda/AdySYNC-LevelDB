@@ -101,7 +101,7 @@
 
         const labelsLayer = document.querySelector('.labels-layer');
         if (labelsLayer) {
-            const oldLabels = labelsLayer.querySelectorAll('.sector-title-label, .dynamic-axis-label');
+            const oldLabels = labelsLayer.querySelectorAll('.sector-title-label, .dynamic-axis-label, .map-boundary-box');
             oldLabels.forEach(el => el.remove());
 
             const halfWidthStuds = (rect.width / 2) * studsPerPixel;
@@ -111,6 +111,44 @@
             const maxZ = centerCoords.z + halfWidthStuds;
             const minX = centerCoords.x - halfHeightStuds;
             const maxX = centerCoords.x + halfHeightStuds;
+
+            if (visibleWidthInStuds <= 20000000) { 
+                const boxMinLimit = -2100000;
+                const boxMaxLimit = 2100000;
+
+                const boxLeft = screenCenterX - ((boxMaxLimit - centerCoords.z) / studsPerPixel);
+                const boxRight = screenCenterX - ((boxMinLimit - centerCoords.z) / studsPerPixel);
+                const boxTop = screenCenterY + ((boxMinLimit - centerCoords.x) / studsPerPixel);
+                const boxBottom = screenCenterY + ((boxMaxLimit - centerCoords.x) / studsPerPixel);
+
+                const boxWidth = boxRight - boxLeft;
+                const boxHeight = boxBottom - boxTop;
+
+                if (boxLeft + boxWidth > -200 && boxLeft < rect.width + 200 &&
+                    boxTop + boxHeight > -200 && boxTop < rect.height + 200) {
+                    
+                    const giantBox = document.createElement('div');
+                    giantBox.className = 'map-boundary-box';
+                    giantBox.style.left = `${boxLeft}px`;
+                    giantBox.style.top = `${boxTop}px`;
+                    giantBox.style.width = `${boxWidth}px`;
+                    giantBox.style.height = `${boxHeight}px`;
+                    
+                    const labelText = "Walkable Space (2.1M)";
+                    const createLabel = (positionClasses, positionStyles) => {
+                        const label = document.createElement('div');
+                        label.className = `map-boundary-label ${positionClasses}`;
+                        label.textContent = labelText;
+                        Object.assign(label.style, positionStyles);
+                        return label;
+                    };
+
+                    giantBox.appendChild(createLabel('top-left', { top: '8px', left: '12px' }));
+                    giantBox.appendChild(createLabel('bottom-right', { bottom: '8px', right: '12px' }));
+
+                    labelsLayer.appendChild(giantBox);
+                }
+            }
 
             if (visibleWidthInStuds < 15000000) {
                 const sectorSize = 1000000;
