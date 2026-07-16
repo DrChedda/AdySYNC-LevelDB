@@ -148,66 +148,48 @@
         const startX = Math.floor((minX - halfMinor) / minorStep) * minorStep + halfMinor;
         const endX = Math.ceil((maxX - halfMinor) / minorStep) * minorStep + halfMinor;
 
-        if (((endZ - startZ) / minorStep > 500) || ((endX - startX) / minorStep > 500)) return;
+        if (((endZ - startZ) / minorStep <= 500) && ((endX - startX) / minorStep <= 500)) {
+            const canDrawGrid = ((endZ - startZ) / minorStep <= 500) && ((endX - startX) / minorStep <= 500);
+            const clampedOriginY = Math.max(clipTop + 20, Math.min(clipBottom - 20, originScreenY));
+            const clampedOriginX = Math.max(clipLeft + 20, Math.min(clipRight - 20, originScreenX));
 
-        for (let z = startZ; z <= endZ; z += minorStep) {
-            if (Math.abs(z) > LIMIT) continue; 
+            for (let z = startZ; z <= endZ; z += minorStep) {
+                if (Math.abs(z) > LIMIT) continue; 
 
-            const screenX = zToScreen(z);
-            if (screenX < borderLeft || screenX > borderRight) continue;
+                const screenX = zToScreen(z);
+                if (screenX < borderLeft || screenX > borderRight) continue;
 
-            const isMajor = Math.abs((z - halfMajor) % majorStep) < halfMinor;
-            const line = document.createElement('div');
-            line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
-            line.style.left = `${screenX}px`;
-            line.style.top = `${clipTop}px`;
-            line.style.height = `${borderHeight}px`;
-            line.style.width = isMajor ? '1.5px' : '0.5px';
-            line.style.backgroundColor = isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)';
-            axisOverlay.appendChild(line);
+                const isMajor = Math.abs((z - halfMajor) % majorStep) < halfMinor;
 
-            if (isMajor && originScreenY >= borderBottom && originScreenY <= borderTop) {
-                const label = document.createElement('span');
-                label.className = 'axis-label';
-                label.textContent = `Z ${Math.round(z).toLocaleString()}`;
-                label.style.left = `${screenX}px`;
-                label.style.top = `${originScreenY}px`;
-                
-                if (labelsLayer) {
-                    labelsLayer.appendChild(label);
-                } else {
-                    axisOverlay.appendChild(label);
+                if (canDrawGrid) {
+                    const line = document.createElement('div');
+                    line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
+                    line.style.left = `${screenX}px`;
+                    line.style.top = `${clipTop}px`;
+                    line.style.height = `${borderHeight}px`;
+                    line.style.width = isMajor ? '1.5px' : '0.5px';
+                    line.style.backgroundColor = isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)';
+                    axisOverlay.appendChild(line);
                 }
             }
-        }
 
-        for (let x = startX; x <= endX; x += minorStep) {
-            if (Math.abs(x) > LIMIT) continue;
+            for (let x = startX; x <= endX; x += minorStep) {
+                if (Math.abs(x) > LIMIT) continue;
 
-            const screenY = xToScreen(x);
-            if (screenY < borderBottom || screenY > borderTop) continue;
+                const screenY = xToScreen(x);
+                if (screenY < borderBottom || screenY > borderTop) continue;
 
-            const isMajor = Math.abs((x - halfMajor) % majorStep) < halfMinor;
-            const line = document.createElement('div');
-            line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
-            line.style.left = `${clipLeft}px`;
-            line.style.width = `${borderWidth}px`;
-            line.style.top = `${screenY}px`;
-            line.style.height = isMajor ? '1.5px' : '0.5px';
-            line.style.backgroundColor = isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)';
-            axisOverlay.appendChild(line);
+                const isMajor = Math.abs((x - halfMajor) % majorStep) < halfMinor;
 
-            if (isMajor && originScreenX >= borderLeft && originScreenX <= borderRight) {
-                const label = document.createElement('span');
-                label.className = 'axis-label';
-                label.textContent = `X ${Math.round(x).toLocaleString()}`;
-                label.style.left = `${originScreenX}px`;
-                label.style.top = `${screenY}px`;
-                
-                if (labelsLayer) {
-                    labelsLayer.appendChild(label);
-                } else {
-                    axisOverlay.appendChild(label);
+                if (canDrawGrid) {
+                    const line = document.createElement('div');
+                    line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
+                    line.style.left = `${clipLeft}px`;
+                    line.style.width = `${borderWidth}px`;
+                    line.style.top = `${screenY}px`;
+                    line.style.height = isMajor ? '1.5px' : '0.5px';
+                    line.style.backgroundColor = isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)';
+                    axisOverlay.appendChild(line);
                 }
             }
         }
