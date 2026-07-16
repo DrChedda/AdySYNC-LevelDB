@@ -126,7 +126,7 @@ body {
 .axis-line {
     position: absolute;
     z-index: 2;
-    background: #e07334; 
+    background: #695a52; 
     box-shadow: 0 0 8px rgba(224, 115, 52, 0.6);
     pointer-events: none;
 }
