@@ -167,6 +167,7 @@
             }
 
             const step = getDynamicStep(studsPerPixel);
+            const edgeThreshold = 25;
 
             const startX = Math.ceil(minX / step) * step;
             const endX = Math.floor(maxX / step) * step;
@@ -180,10 +181,13 @@
                         if (xVal === 0) continue;
 
                         const screenY = screenCenterY + ((xVal - centerCoords.x) / studsPerPixel);
-                        if (screenY > 10 && screenY < rect.height - 10) {
+                        if (screenY > edgeThreshold && screenY < rect.height - edgeThreshold) {
                             const numLabel = document.createElement('div');
                             numLabel.className = 'dynamic-axis-label';
-                            numLabel.textContent = xVal.toLocaleString();
+                            
+                            const displayVal = Math.abs(xVal).toLocaleString();
+                            numLabel.textContent = xVal > 0 ? `X ${displayVal}` : `-X ${displayVal}`;
+
                             numLabel.style.position = 'absolute';
                             numLabel.style.top = `${screenY}px`;
                             
@@ -220,10 +224,17 @@
                         if (Math.abs(zVal) > LIMIT) continue;
 
                         const screenX = screenCenterX - ((zVal - centerCoords.z) / studsPerPixel);
-                        if (screenX > 10 && screenX < rect.width - 10) {
+                        if (screenX > edgeThreshold && screenX < rect.width - edgeThreshold) {
                             const numLabel = document.createElement('div');
                             numLabel.className = 'dynamic-axis-label';
-                            numLabel.textContent = zVal.toLocaleString();
+                            
+                            if (zVal === 0) {
+                                numLabel.textContent = "0";
+                            } else {
+                                const displayVal = Math.abs(zVal).toLocaleString();
+                                numLabel.textContent = zVal > 0 ? `Z ${displayVal}` : `-Z ${displayVal}`;
+                            }
+
                             numLabel.style.position = 'absolute';
                             numLabel.style.left = `${screenX}px`;
                             
