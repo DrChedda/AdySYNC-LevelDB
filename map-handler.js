@@ -10,6 +10,11 @@
     const labelsLayer = document.querySelector('.labels-layer');
     const wallsLayer = document.querySelector('.walls-layer');
 
+    const borderLeftEl = document.querySelector('.border-line--left');
+    const borderRightEl = document.querySelector('.border-line--right');
+    const borderTopEl = document.querySelector('.border-line--top');
+    const borderBottomEl = document.querySelector('.border-line--bottom');
+
     const LIMIT = 1000000000;
 
     let centerXCoord = 0; 
@@ -20,21 +25,25 @@
     let startX = 0, startY = 0;
     let startCenterX = 0, startCenterZ = 0;
 
+    const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+
     function setInitialZoom() {
         const rect = mapSurface.getBoundingClientRect();
-        const minDimension = Math.min(rect.width, rect.height) || 800;
-        studsPerPixel = 20000 / minDimension; 
+        studsPerPixel = 20000 / (Math.min(rect.width, rect.height) || 800); 
     }
 
-    function clamp(val, min, max) {
-        return val < min ? min : (val > max ? max : val);
-    }
+    const toScreen = (x, z, rect) => ({
+        x: (rect.width / 2) - ((z - centerZCoord) / studsPerPixel),
+        y: (rect.height / 2) + ((x - centerXCoord) / studsPerPixel)
+    });
+
+    const toWorld = (screenX, screenY, rect) => ({
+        z: clamp(Math.round(centerZCoord - ((screenX - rect.width / 2) * studsPerPixel)), -LIMIT, LIMIT),
+        x: clamp(Math.round(centerXCoord + ((screenY - rect.height / 2) * studsPerPixel)), -LIMIT, LIMIT)
+    });
 
     function applyTransform() {
         const rect = mapSurface.getBoundingClientRect();
-        const width = rect.width;
-        const height = rect.height;
-
         centerXCoord = clamp(centerXCoord, -LIMIT, LIMIT);
         centerZCoord = clamp(centerZCoord, -LIMIT, LIMIT);
 
@@ -42,95 +51,103 @@
             zoomLabel.textContent = `${((1 / studsPerPixel) * 100).toFixed(4)}%`;
         }
 
-        updateDynamicGrid(width, height);
+        updateDynamicGrid(rect.width, rect.height);
 
-        if (window.MapEngine && window.MapEngine.onViewportChange) {
+        if (window.MapEngine?.onViewportChange) {
             window.MapEngine.onViewportChange();
         }
     }
 
     function updateDynamicGrid(width, height) {
-        axisOverlay.textContent = ''; 
-        if (labelsLayer) labelsLayer.textContent = '';
+        axisOverlay.querySelectorAll('.dynamic-grid-line').forEach(el => el.remove());
 
-        const screenCenterX = width / 2;
-        const screenCenterY = height / 2;
-
-        const zToScreen = (z) => screenCenterX - ((z - centerZCoord) / studsPerPixel);
-        const xToScreen = (x) => screenCenterY + ((x - centerXCoord) / studsPerPixel);
-
-        const borderLeft = zToScreen(LIMIT);
-        const borderRight = zToScreen(-LIMIT);
-        const borderTop = xToScreen(LIMIT);     
-        const borderBottom = xToScreen(-LIMIT); 
+        const rect = { width, height };
+        const borderLeft = toScreen(0, LIMIT, rect).x;
+        const borderRight = toScreen(0, -LIMIT, rect).x;
+        const borderTop = toScreen(LIMIT, 0, rect).y;     
+        const borderBottom = toScreen(-LIMIT, 0, rect).y; 
 
         const clipLeft = Math.max(0, borderLeft);
         const clipRight = Math.min(width, borderRight);
         const clipTop = Math.max(0, borderBottom);
         const clipBottom = Math.min(height, borderTop);
 
-        const originScreenX = zToScreen(0);
-        const originScreenY = xToScreen(0);
+        const originScreen = toScreen(0, 0, rect);
 
         if (axisLineV) {
-            axisLineV.style.left = `${originScreenX}px`;
-            axisLineV.style.top = `${clipTop}px`;
-            axisLineV.style.height = `${clipBottom - clipTop}px`;
-            axisLineV.style.display = (originScreenX < borderLeft || originScreenX > borderRight || clipTop >= clipBottom) ? 'none' : 'block';
-            axisOverlay.appendChild(axisLineV);
+            Object.assign(axisLineV.style, {
+                left: `${originScreen.x}px`, top: `${clipTop}px`, height: `${clipBottom - clipTop}px`,
+                display: (originScreen.x < borderLeft || originScreen.x > borderRight || clipTop >= clipBottom) ? 'none' : 'block'
+            });
         }
         if (axisLineH) {
-            axisLineH.style.top = `${originScreenY}px`;
-            axisLineH.style.left = `${clipLeft}px`;
-            axisLineH.style.width = `${clipRight - clipLeft}px`;
-            axisLineH.style.display = (originScreenY < borderBottom || originScreenY > borderTop || clipLeft >= clipRight) ? 'none' : 'block';
-            axisOverlay.appendChild(axisLineH);
+            Object.assign(axisLineH.style, {
+                top: `${originScreen.y}px`, left: `${clipLeft}px`, width: `${clipRight - clipLeft}px`,
+                display: (originScreen.y < borderBottom || originScreen.y > borderTop || clipLeft >= clipRight) ? 'none' : 'block'
+            });
         }
-
-        const drawBorder = (left, top, w, h, isVertical) => {
-            const border = document.createElement('div');
-            border.className = 'world-border-line';
-            border.style.left = `${left}px`;
-            border.style.top = `${top}px`;
-            border.style.width = isVertical ? '3px' : `${w}px`;
-            border.style.height = isVertical ? `${h}px` : '3px';
-            border.style.transform = isVertical ? 'translateX(-50%)' : 'translateY(-50%)';
-            axisOverlay.appendChild(border);
-        };
 
         const borderHeight = clipBottom - clipTop;
         const borderWidth = clipRight - clipLeft;
 
-        if (borderHeight > 0) {
-            if (borderLeft >= 0 && borderLeft <= width) drawBorder(borderLeft, clipTop, 3, borderHeight, true);
-            if (borderRight >= 0 && borderRight <= width) drawBorder(borderRight, clipTop, 3, borderHeight, true);
+        if (borderLeftEl) {
+            const showLeft = borderHeight > 0 && borderLeft >= 0 && borderLeft <= width;
+            borderLeftEl.style.display = showLeft ? 'block' : 'none';
+            if (showLeft) {
+                Object.assign(borderLeftEl.style, {
+                    left: `${borderLeft}px`, top: `${clipTop}px`,
+                    width: '3px', height: `${borderHeight}px`, transform: 'translateX(-50%)'
+                });
+            }
         }
-        if (borderWidth > 0) {
-            if (borderTop >= 0 && borderTop <= height) drawBorder(clipLeft, borderTop, borderWidth, 3, false);
-            if (borderBottom >= 0 && borderBottom <= height) drawBorder(clipLeft, borderBottom, borderWidth, 3, false);
+
+        if (borderRightEl) {
+            const showRight = borderHeight > 0 && borderRight >= 0 && borderRight <= width;
+            borderRightEl.style.display = showRight ? 'block' : 'none';
+            if (showRight) {
+                Object.assign(borderRightEl.style, {
+                    left: `${borderRight}px`, top: `${clipTop}px`,
+                    width: '3px', height: `${borderHeight}px`, transform: 'translateX(-50%)'
+                });
+            }
+        }
+
+        if (borderTopEl) {
+            const showTop = borderWidth > 0 && borderTop >= 0 && borderTop <= height;
+            borderTopEl.style.display = showTop ? 'block' : 'none';
+            if (showTop) {
+                Object.assign(borderTopEl.style, {
+                    left: `${clipLeft}px`, top: `${borderTop}px`,
+                    width: `${borderWidth}px`, height: '3px', transform: 'translateY(-50%)'
+                });
+            }
+        }
+
+        if (borderBottomEl) {
+            const showBottom = borderWidth > 0 && borderBottom >= 0 && borderBottom <= height;
+            borderBottomEl.style.display = showBottom ? 'block' : 'none';
+            if (showBottom) {
+                Object.assign(borderBottomEl.style, {
+                    left: `${clipLeft}px`, top: `${borderBottom}px`,
+                    width: `${borderWidth}px`, height: '3px', transform: 'translateY(-50%)'
+                });
+            }
         }
 
         const visibleWidthInStuds = width * studsPerPixel;
 
         if (wallsLayer) {
-            if (visibleWidthInStuds > 20000000) {
-                wallsLayer.classList.add('hidden');
-            } else {
-                wallsLayer.classList.remove('hidden');
-            }
+            wallsLayer.classList.toggle('hidden', visibleWidthInStuds > 20000000);
         }
 
         let majorStep, minorStep;
-
         if (visibleWidthInStuds >= 500000 && visibleWidthInStuds <= 20000000) {
             majorStep = 1000000;
             minorStep = 200000;
         } else {
             const rawStep = 120 * studsPerPixel; 
-            const log = Math.log10(rawStep);
-            const basePower = Math.pow(10, Math.floor(log));
+            const basePower = Math.pow(10, Math.floor(Math.log10(rawStep)));
             const ratio = rawStep / basePower;
-
             majorStep = basePower * (ratio >= 5 ? 5 : (ratio >= 2 ? 2 : 1));
             minorStep = majorStep / 5;
         }
@@ -138,114 +155,79 @@
         const halfMinor = minorStep / 2;
         const halfMajor = majorStep / 2;
 
-        const minZ = centerZCoord - (screenCenterX * studsPerPixel);
-        const maxZ = centerZCoord + (screenCenterX * studsPerPixel);
-        const minX = centerXCoord - (screenCenterY * studsPerPixel);
-        const maxX = centerXCoord + (screenCenterY * studsPerPixel);
+        const minZ = centerZCoord - ((width / 2) * studsPerPixel);
+        const maxZ = centerZCoord + ((width / 2) * studsPerPixel);
+        const minX = centerXCoord - ((height / 2) * studsPerPixel);
+        const maxX = centerXCoord + ((height / 2) * studsPerPixel);
 
         const startZ = Math.floor((minZ - halfMinor) / minorStep) * minorStep + halfMinor;
         const endZ = Math.ceil((maxZ - halfMinor) / minorStep) * minorStep + halfMinor;
         const startX = Math.floor((minX - halfMinor) / minorStep) * minorStep + halfMinor;
         const endX = Math.ceil((maxX - halfMinor) / minorStep) * minorStep + halfMinor;
 
-        if (((endZ - startZ) / minorStep <= 500) && ((endX - startX) / minorStep <= 500)) {
-            const canDrawGrid = ((endZ - startZ) / minorStep <= 500) && ((endX - startX) / minorStep <= 500);
-            const clampedOriginY = Math.max(clipTop + 20, Math.min(clipBottom - 20, originScreenY));
-            const clampedOriginX = Math.max(clipLeft + 20, Math.min(clipRight - 20, originScreenX));
+        const canDrawGrid = ((endZ - startZ) / minorStep <= 500) && ((endX - startX) / minorStep <= 500);
 
+        if (canDrawGrid) {
             for (let z = startZ; z <= endZ; z += minorStep) {
                 if (Math.abs(z) > LIMIT) continue; 
-
-                const screenX = zToScreen(z);
+                const screenX = toScreen(0, z, rect).x;
                 if (screenX < borderLeft || screenX > borderRight) continue;
 
                 const isMajor = Math.abs((z - halfMajor) % majorStep) < halfMinor;
-
-                if (canDrawGrid) {
-                    const line = document.createElement('div');
-                    line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
-                    line.style.left = `${screenX}px`;
-                    line.style.top = `${clipTop}px`;
-                    line.style.height = `${borderHeight}px`;
-                    line.style.width = isMajor ? '1.5px' : '0.5px';
-                    line.style.backgroundColor = isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)';
-                    axisOverlay.appendChild(line);
-                }
+                const line = document.createElement('div');
+                line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
+                Object.assign(line.style, {
+                    left: `${screenX}px`, top: `${clipTop}px`, height: `${borderHeight}px`,
+                    width: isMajor ? '1.5px' : '0.5px',
+                    backgroundColor: isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)'
+                });
+                axisOverlay.appendChild(line);
             }
 
             for (let x = startX; x <= endX; x += minorStep) {
                 if (Math.abs(x) > LIMIT) continue;
-
-                const screenY = xToScreen(x);
+                const screenY = toScreen(x, 0, rect).y;
                 if (screenY < borderBottom || screenY > borderTop) continue;
 
                 const isMajor = Math.abs((x - halfMajor) % majorStep) < halfMinor;
-
-                if (canDrawGrid) {
-                    const line = document.createElement('div');
-                    line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
-                    line.style.left = `${clipLeft}px`;
-                    line.style.width = `${borderWidth}px`;
-                    line.style.top = `${screenY}px`;
-                    line.style.height = isMajor ? '1.5px' : '0.5px';
-                    line.style.backgroundColor = isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)';
-                    axisOverlay.appendChild(line);
-                }
+                const line = document.createElement('div');
+                line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
+                Object.assign(line.style, {
+                    left: `${clipLeft}px`, width: `${borderWidth}px`, top: `${screenY}px`,
+                    height: isMajor ? '1.5px' : '0.5px',
+                    backgroundColor: isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)'
+                });
+                axisOverlay.appendChild(line);
             }
         }
     }
 
-    function getStudCoordinates(clientX, clientY) {
-        const rect = mapSurface.getBoundingClientRect();
-        const localX = clientX - rect.left;
-        const localY = clientY - rect.top;
-
-        const z = clamp(Math.round(centerZCoord - ((localX - rect.width / 2) * studsPerPixel)), -LIMIT, LIMIT);
-        const x = clamp(Math.round(centerXCoord + ((localY - rect.height / 2) * studsPerPixel)), -LIMIT, LIMIT);
-
-        return { x, z };
-    }
-
     function updateCoordinateDisplay(clientX, clientY) {
-        const { x, z } = getStudCoordinates(clientX, clientY);
+        const rect = mapSurface.getBoundingClientRect();
+        const { x, z } = toWorld(clientX - rect.left, clientY - rect.top, rect);
         if (coordinateOutput) {
-            const commaX = Math.round(x).toLocaleString('en-US');
-            const commaZ = Math.round(z).toLocaleString('en-US');
-
-
-            coordinateOutput.textContent = `X ${commaX}, Z ${commaZ}`;
+            coordinateOutput.textContent = `X ${Math.round(x).toLocaleString('en-US')}, Z ${Math.round(z).toLocaleString('en-US')}`;
         }
     }
 
     function handleWheel(event) {
         event.preventDefault();
-
         const rect = mapSurface.getBoundingClientRect();
-        const cursorX = event.clientX - rect.left;
-        const cursorY = event.clientY - rect.top;
+        const targetWorld = toWorld(event.clientX - rect.left, event.clientY - rect.top, rect);
 
-        const { x: targetWorldX, z: targetWorldZ } = getStudCoordinates(event.clientX, event.clientY);
+        studsPerPixel = Math.max(0.00001, Math.min(4000000, studsPerPixel * (event.deltaY < 0 ? 1 / 1.2 : 1.2)));
 
-        const zoomFactor = event.deltaY < 0 ? 1 / 1.2 : 1.2;
-        studsPerPixel = Math.max(0.00001, Math.min(4000000, studsPerPixel * zoomFactor));
-
-        const halfWidth = rect.width / 2;
-        const halfHeight = rect.height / 2;
-
-        centerZCoord = clamp(targetWorldZ + ((cursorX - halfWidth) * studsPerPixel), -LIMIT, LIMIT);
-        centerXCoord = clamp(targetWorldX - ((cursorY - halfHeight) * studsPerPixel), -LIMIT, LIMIT);
+        centerZCoord = clamp(targetWorld.z + (((event.clientX - rect.left) - rect.width / 2) * studsPerPixel), -LIMIT, LIMIT);
+        centerXCoord = clamp(targetWorld.x - (((event.clientY - rect.top) - rect.height / 2) * studsPerPixel), -LIMIT, LIMIT);
 
         applyTransform();
     }
 
     function beginDrag(event) {
         if (event.button !== 0) return;
-
         dragging = true;
-        startX = event.clientX;
-        startY = event.clientY;
-        startCenterX = centerXCoord;
-        startCenterZ = centerZCoord;
+        startX = event.clientX; startY = event.clientY;
+        startCenterX = centerXCoord; startCenterZ = centerZCoord;
 
         mapSurface.classList.add('dragging');
         mapSurface.setPointerCapture(event.pointerId);
@@ -256,7 +238,6 @@
             updateCoordinateDisplay(event.clientX, event.clientY);
             return;
         }
-
         centerZCoord = clamp(startCenterZ + ((event.clientX - startX) * studsPerPixel), -LIMIT, LIMIT);
         centerXCoord = clamp(startCenterX - ((event.clientY - startY) * studsPerPixel), -LIMIT, LIMIT);
 
@@ -278,17 +259,14 @@
     mapSurface.addEventListener('pointermove', handleDrag);
     mapSurface.addEventListener('pointerup', endDrag);
     mapSurface.addEventListener('pointercancel', endDrag);
-
     mapSurface.addEventListener('pointerleave', (event) => {
-        if (!dragging) {
-            updateCoordinateDisplay(event.clientX, event.clientY);
-        }
+        if (!dragging) updateCoordinateDisplay(event.clientX, event.clientY);
     });
 
     setTimeout(applyTransform, 100);
 
     window.MapEngine = {
-        applyTransform: applyTransform,
+        applyTransform,
         get studsPerPixel() { return studsPerPixel; },
         get centerCoords() { return { x: centerXCoord, z: centerZCoord }; },
         get LIMIT() { return LIMIT; },

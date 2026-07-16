@@ -10,11 +10,25 @@
     <div class="map-app">
       <div class="map-surface" id="mapSurface" aria-label="Backrooms map canvas">
         <div class="map-world" id="mapWorld" aria-hidden="true">
-          <div class="axis-overlay" aria-hidden="true"></div>
-          <div class="axis-line axis-line--vertical"></div>
-          <div class="axis-line axis-line--horizontal"></div>
+          <div class="axis-overlay" aria-hidden="true">
+            <div class="axis-line axis-line--vertical"></div>
+            <div class="axis-line axis-line--horizontal"></div>
+
+            <div class="world-border-line border-line--left" style="position: absolute; display: none;"></div>
+            <div class="world-border-line border-line--right" style="position: absolute; display: none;"></div>
+            <div class="world-border-line border-line--top" style="position: absolute; display: none;"></div>
+            <div class="world-border-line border-line--bottom" style="position: absolute; display: none;"></div>
+          </div>
+
           <div class="walls-layer"></div>
-          <div class="labels-layer" aria-hidden="true"></div>
+
+          <div class="labels-layer" aria-hidden="true">
+            <div class="map-boundary-box" style="position: absolute; display: none;">
+              <div class="map-boundary-label top-left" style="position: absolute; top: 8px; left: 12px;">Walkable Space (2.1M)</div>
+              <div class="map-boundary-label bottom-right" style="position: absolute; bottom: 8px; right: 12px;">Walkable Space (2.1M)</div>
+            </div>
+          </div>
+
           <div class="points-layer"></div>
         </div>
 
