@@ -178,8 +178,8 @@
                 line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
                 Object.assign(line.style, {
                     left: `${screenX}px`, top: `${clipTop}px`, height: `${borderHeight}px`,
-                    width: isMajor ? '1.5px' : '0.5px',
-                    backgroundColor: isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)'
+                    width: isMajor ? '2px' : '1px',
+                    backgroundColor: isMajor ? 'rgba(141, 129, 109, 0.25)' : 'rgba(141, 129, 109, 0.08)'
                 });
                 axisOverlay.appendChild(line);
             }
@@ -194,8 +194,8 @@
                 line.className = `dynamic-grid-line ${isMajor ? 'major' : 'minor'}`;
                 Object.assign(line.style, {
                     left: `${clipLeft}px`, width: `${borderWidth}px`, top: `${screenY}px`,
-                    height: isMajor ? '1.5px' : '0.5px',
-                    backgroundColor: isMajor ? 'rgba(141, 129, 109, 0.35)' : 'rgba(141, 129, 109, 0.12)'
+                    height: isMajor ? '2px' : '1px',
+                    backgroundColor: isMajor ? 'rgba(141, 129, 109, 0.25)' : 'rgba(141, 129, 109, 0.08)'
                 });
                 axisOverlay.appendChild(line);
             }
@@ -207,6 +207,12 @@
         const { x, z } = toWorld(clientX - rect.left, clientY - rect.top, rect);
         if (coordinateOutput) {
             coordinateOutput.textContent = `X ${Math.round(x).toLocaleString('en-US')}, Z ${Math.round(z).toLocaleString('en-US')}`;
+        }
+    }
+
+    function resetCoordinateDisplay() {
+        if (coordinateOutput) {
+            coordinateOutput.textContent = "X -----, Z -----";
         }
     }
 
@@ -260,7 +266,9 @@
     mapSurface.addEventListener('pointerup', endDrag);
     mapSurface.addEventListener('pointercancel', endDrag);
     mapSurface.addEventListener('pointerleave', (event) => {
-        if (!dragging) updateCoordinateDisplay(event.clientX, event.clientY);
+        if (!dragging) {
+            resetCoordinateDisplay();
+        }
     });
 
     setTimeout(applyTransform, 100);

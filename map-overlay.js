@@ -170,7 +170,7 @@
                     if (Math.abs(xVal) > LIMIT || xVal === 0) continue;
                     const pos = toScreen(xVal, 0);
                     if (pos.y > edge && pos.y < rect.height - edge) {
-                        createAxisLabel(`X ${Math.abs(xVal).toLocaleString()}`, axisZ - 8, pos.y, 'translate(-100%, -50%)');
+                        createAxisLabel(`X ${xVal.toLocaleString()}`, axisZ - 8, pos.y, 'translate(-100%, -50%)');
                     }
                 }
             }
@@ -183,7 +183,7 @@
                         if (zVal === 0) {
                             createAxisLabel("0", pos.x - 8, axisX + 8, 'translate(-100%, 0%)');
                         } else {
-                            createAxisLabel(`Z ${Math.abs(zVal).toLocaleString()}`, pos.x, axisX + 8, 'translateX(-50%)');
+                            createAxisLabel(`Z ${zVal.toLocaleString()}`, pos.x, axisX + 8, 'translateX(-50%)');
                         }
                     }
                 }
