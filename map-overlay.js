@@ -3,304 +3,296 @@
     const wallsLayer = document.querySelector('.walls-layer');
     const pointsLayer = document.querySelector('.points-layer');
     const coordTagEl = document.querySelector('.coord-level-tag');
+    const labelsLayer = document.querySelector('.labels-layer');
 
-    let currentLevelData = null;
-    let wallData = [], pointsData = [], sectorNamesData = {};
+    const canvas = Object.assign(document.createElement('canvas'), { className: 'walls-canvas' });
+    Object.assign(canvas.style, { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none' });
+    wallsLayer.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let currentLevelData = null, wallData = [], pointsData = [], sectorNamesData = {}, isRenderPending = false;
 
     const getColumnLetter = col => {
-        const isNegative = col < 0;
-        let n = Math.abs(col);
-        let result = "";
-
+        const sign = col < 0 ? '-' : '';
+        let n = Math.abs(col), res = '';
         while (n >= 0) {
-            result = String.fromCharCode((n % 26) + 65) + result;
+            res = String.fromCharCode((n % 26) + 65) + res;
             n = Math.floor(n / 26) - 1;
         }
-
-        return isNegative ? `-${result}` : result;
+        return sign + res;
     };
 
-    function getDynamicStep(studsPerPixel) {
-        const idealStep = 160 * studsPerPixel;
-        if (!idealStep || !isFinite(idealStep)) return 1000000;
-
-        const magnitude = Math.pow(10, Math.floor(Math.log10(idealStep)));
-        const ratio = idealStep / magnitude;
-        const step = magnitude * (ratio < 1.5 ? 1 : ratio < 3.5 ? 2 : ratio < 7.5 ? 5 : 10);
-
-        return (!step || !isFinite(step)) ? 1000000 : Math.max(100, step);
+    function getDynamicStep(spp) {
+        const ideal = 160 * spp;
+        if (!ideal || !isFinite(ideal)) return 1e6;
+        const mag = 10 ** Math.floor(Math.log10(ideal));
+        const r = ideal / mag;
+        const step = mag * (r < 1.5 ? 1 : r < 3.5 ? 2 : r < 7.5 ? 5 : 10);
+        return Math.max(100, step || 1e6);
     }
 
-    function renderActiveViewportContent() {
-        if (!window.MapEngine) return;
-        
-        const { studsPerPixel, centerCoords, LIMIT } = window.MapEngine;
-        const rect = wallsLayer.parentElement.getBoundingClientRect();
-        const screenCenterX = rect.width / 2, screenCenterY = rect.height / 2;
-        
-        const visibleWidthInStuds = rect.width * studsPerPixel;
+    function centerLevelData(data) {
+        const items = [...(data.walls || []), ...(data.locations || [])].filter(Boolean);
+        if (!items.length) return data;
 
-        const toScreen = (x, z) => ({
-            x: screenCenterX - ((z - centerCoords.z) / studsPerPixel),
-            y: screenCenterY + ((x - centerCoords.x) / studsPerPixel)
+        let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+        items.forEach(p => {
+            if (p.x !== undefined) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); }
+            if (p.z !== undefined) { minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z); }
         });
 
-        const isElementInViewport = (x, y, padding = 0) => {
-            return (
-                x >= -padding && 
-                x <= rect.width + padding && 
-                y >= -padding && 
-                y <= rect.height + padding
-            );
-        };
+        if (minX === Infinity) return data;
+        const offX = (minX + maxX) / 2, offZ = (minZ + maxZ) / 2;
 
-        wallsLayer.innerHTML = '';
-        if (wallData?.length > 1) {
-            for (let i = 0; i < wallData.length - 1; i++) {
-                const curr = wallData[i], next = wallData[i + 1];
-                if (!curr || !next || Math.abs(curr.x) > LIMIT || Math.abs(curr.z) > LIMIT || Math.abs(next.x) > LIMIT || Math.abs(next.z) > LIMIT) continue;
+        ['walls', 'locations'].forEach(key => {
+            if (data[key]) {
+                data[key] = data[key].map(p => p ? { ...p, x: Math.round(p.x - offX), z: Math.round(p.z - offZ) } : null);
+            }
+        });
+        return data;
+    }
 
-                const p1 = toScreen(curr.x, curr.z), p2 = toScreen(next.x, next.z);
-                const dx = p2.x - p1.x, dy = p2.y - p1.y;
-                const length = Math.sqrt(dx * dx + dy * dy);
+    function drawViewport() {
+        if (!window.MapEngine) return;
+        const { studsPerPixel: spp, centerCoords: c, LIMIT } = window.MapEngine;
+        const rect = wallsLayer.parentElement.getBoundingClientRect();
+        const { width: w, height: h } = rect;
 
-                if (Math.max(p1.x, p2.x) < 0 || Math.min(p1.x, p2.x) > rect.width || Math.max(p1.y, p2.y) < 0 || Math.min(p1.y, p2.y) > rect.height) continue;
+        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 
-                const wallEl = document.createElement('div');
-                wallEl.className = 'map-wall';
-                Object.assign(wallEl.style, {
-                    position: 'absolute', left: `${p1.x}px`, top: `${p1.y}px`,
-                    width: `${length}px`, height: '3px',
-                    transform: `rotate(${Math.atan2(dy, dx) * (180 / Math.PI)}deg)`,
-                    transformOrigin: '0 50%'
-                });
-                wallsLayer.appendChild(wallEl);
+        const sCX = w / 2, sCY = h / 2;
+        const visStuds = w * spp;
+
+        const toX = z => sCX - ((z - c.z) / spp);
+        const toY = x => sCY + ((x - c.x) / spp);
+        const inView = (x, y, pad = 0) => x >= -pad && x <= w + pad && y >= -pad && y <= h + pad;
+
+        ctx.clearRect(0, 0, w, h);
+        if (wallData?.length > 0) {
+            const wallWidth = 3;
+            ctx.lineWidth = wallWidth;
+            ctx.strokeStyle = '#ffffff';
+            ctx.fillStyle = '#ffffff';
+
+            if (wallData.length === 1) {
+                const p = wallData[0];
+                if (p && p.x !== undefined && p.z !== undefined && Math.abs(p.x) <= LIMIT && Math.abs(p.z) <= LIMIT) {
+                    const posX = toX(p.z), posY = toY(p.x);
+                    if (inView(posX, posY, wallWidth)) {
+                        ctx.beginPath();
+                        ctx.arc(posX, posY, wallWidth / 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            } else {
+                ctx.beginPath();
+
+                for (let i = 0; i < wallData.length; i++) {
+                    const curr = wallData[i];
+                    if (!curr || curr.x === undefined || Math.abs(curr.x) > LIMIT || Math.abs(curr.z) > LIMIT) continue;
+
+                    const next = wallData[i + 1];
+                    const prev = wallData[i - 1];
+
+                    const p1X = toX(curr.z), p1Y = toY(curr.x);
+
+                    const hasNext = next && next.x !== undefined && Math.abs(next.x) <= LIMIT && Math.abs(next.z) <= LIMIT;
+                    const hasPrev = prev && prev.x !== undefined && Math.abs(prev.x) <= LIMIT && Math.abs(prev.z) <= LIMIT;
+
+                    if (!hasNext && !hasPrev) {
+                        if (inView(p1X, p1Y, wallWidth)) {
+                            ctx.moveTo(p1X + wallWidth / 2, p1Y);
+                            ctx.arc(p1X, p1Y, wallWidth / 2, 0, Math.PI * 2);
+                        }
+                        continue;
+                    }
+
+                    if (hasNext) {
+                        const p2X = toX(next.z), p2Y = toY(next.x);
+
+                        if (Math.max(p1X, p2X) < 0 || Math.min(p1X, p2X) > w ||
+                            Math.max(p1Y, p2Y) < 0 || Math.min(p1Y, p2Y) > h) continue;
+
+                        ctx.moveTo(p1X, p1Y);
+                        ctx.lineTo(p2X, p2Y);
+                    }
+                }
+
+                ctx.stroke();
+                ctx.fill();
             }
         }
 
-        const labelsLayer = document.querySelector('.labels-layer');
         if (labelsLayer) {
-            labelsLayer.querySelectorAll('.sector-title-label, .dynamic-axis-label').forEach(el => el.remove());
+            labelsLayer.querySelectorAll('.sector-title-label, .dynamic-axis-label').forEach(e => e.remove());
 
-            const halfW = (rect.width / 2) * studsPerPixel, halfH = (rect.height / 2) * studsPerPixel;
-            const minZ = centerCoords.z - halfW, maxZ = centerCoords.z + halfW;
-            const minX = centerCoords.x - halfH, maxX = centerCoords.x + halfH;
-
-            const boundaryBox = labelsLayer.querySelector('.map-boundary-box');
-            if (boundaryBox) {
-                const borderLimit = currentLevelData?.worldBorder;
-
-                if (typeof borderLimit === 'number' && borderLimit > 0 && visibleWidthInStuds <= 20000000) {
-                    const boxMinLimit = -borderLimit;
-                    const boxMaxLimit = borderLimit;
-
-                    const boxLeft = screenCenterX - ((boxMaxLimit - centerCoords.z) / studsPerPixel);
-                    const boxRight = screenCenterX - ((boxMinLimit - centerCoords.z) / studsPerPixel);
-                    const boxTop = screenCenterY + ((boxMinLimit - centerCoords.x) / studsPerPixel);
-                    const boxBottom = screenCenterY + ((boxMaxLimit - centerCoords.x) / studsPerPixel);
-
-                    Object.assign(boundaryBox.style, { 
-                        left: `${boxLeft}px`, 
-                        top: `${boxTop}px`, 
-                        width: `${boxRight - boxLeft}px`, 
-                        height: `${boxBottom - boxTop}px`,
-                        display: 'block'
-                    });
-                } else {
-                    boundaryBox.style.display = 'none';
-                }
+            const bBox = labelsLayer.querySelector('.map-boundary-box');
+            if (bBox) {
+                const border = currentLevelData?.worldBorder;
+                if (border > 0 && visStuds <= 2e7) {
+                    const bL = toX(border), bR = toX(-border), bT = toY(-border), bB = toY(border);
+                    Object.assign(bBox.style, { left: `${bL}px`, top: `${bT}px`, width: `${bR - bL}px`, height: `${bB - bT}px`, display: 'block' });
+                } else bBox.style.display = 'none';
             }
 
-            if (currentLevelData?.hasSectors && visibleWidthInStuds < 20000000) {
-                const stepSz = 1000000;
-                const scale = Math.max(0.2, Math.min(1.0, 3200 / studsPerPixel));
+            if (currentLevelData?.hasSectors && visStuds < 2e7) {
+                const step = 1e6, scale = Math.max(0.2, Math.min(1.0, 3200 / spp));
+                const minZ = c.z - (w / 2) * spp, maxZ = c.z + (w / 2) * spp;
+                const minX = c.x - (h / 2) * spp, maxX = c.x + (h / 2) * spp;
 
-                const startRow = Math.floor((minX + 500000) / stepSz);
-                const endRow = Math.floor((maxX + 500000) / stepSz);
-                const startCol = Math.floor((minZ + 500000) / stepSz);
-                const endCol = Math.floor((maxZ + 500000) / stepSz);
+                const sR = Math.floor((minX + 5e5) / step), eR = Math.floor((maxX + 5e5) / step);
+                const sC = Math.floor((minZ + 5e5) / step), eC = Math.floor((maxZ + 5e5) / step);
 
-                if ((endRow - startRow) * (endCol - startCol) < 400) {
-                    for (let r = startRow; r <= endRow; r++) {
-                        for (let c = startCol; c <= endCol; c++) {
-                            const worldX = (r * stepSz) - 500000;
-                            const worldZ = (c * stepSz) + 500000;
+                if ((eR - sR) * (eC - sC) < 400) {
+                    const frag = document.createDocumentFragment();
+                    for (let r = sR; r <= eR; r++) {
+                        for (let col = sC; col <= eC; col++) {
+                            const wX = (r * step) - 5e5, wZ = (col * step) + 5e5;
+                            if (Math.abs(wX) > LIMIT || Math.abs(wZ) > LIMIT) continue;
 
-                            if (Math.abs(worldX) > LIMIT || Math.abs(worldZ) > LIMIT) continue;
-
-                            const pos = toScreen(worldX, worldZ);
-
-                            if (isElementInViewport(pos.x, pos.y, 100)) {
-                                const sectorId = `${r}|${getColumnLetter(c)}`;
-                                const customName = sectorNamesData[sectorId];
-
-                                const label = document.createElement('div');
-                                label.className = 'sector-title-label';
-                                label.textContent = customName ? `Sector ${customName} (${sectorId})` : `Sector ${sectorId}`;
-
-                                Object.assign(label.style, {
-                                    position: 'absolute', 
-                                    left: `${pos.x}px`, 
-                                    top: `${pos.y}px`,
-                                    transform: `scale(${scale}) translate(4px, 4px)`,
-                                    pointerEvents: 'none'
-                                });
-
-                                labelsLayer.appendChild(label);
+                            const posX = toX(wZ), posY = toY(wX);
+                            if (inView(posX, posY, 100)) {
+                                const secId = `${r}|${getColumnLetter(col)}`;
+                                const lbl = document.createElement('div');
+                                lbl.className = 'sector-title-label';
+                                lbl.textContent = `Sector ${sectorNamesData[secId] ? sectorNamesData[secId] + ` (${secId})` : secId}`;
+                                Object.assign(lbl.style, { position: 'absolute', left: `${posX}px`, top: `${posY}px`, transform: `scale(${scale}) translate(4px, 4px)`, pointerEvents: 'none' });
+                                frag.appendChild(lbl);
                             }
                         }
                     }
+                    labelsLayer.appendChild(frag);
                 }
             }
 
-            const step = getDynamicStep(studsPerPixel), edge = 25;
-            const axisZ = toScreen(0, 0).x, axisX = toScreen(0, 0).y;
+            const dynStep = getDynamicStep(spp), edge = 25;
+            const aZ = toX(0), aX = toY(0);
+            const halfW = (w / 2) * spp, halfH = (h / 2) * spp;
 
-            const createAxisLabel = (text, x, y, transform, extraStyle = {}) => {
-                const lbl = document.createElement('div');
-                lbl.className = 'dynamic-axis-label';
-                lbl.textContent = text;
-                Object.assign(lbl.style, { position: 'absolute', left: `${x}px`, top: `${y}px`, transform, ...extraStyle });
-                labelsLayer.appendChild(lbl);
-            };
-
-            if (axisZ > 0 && axisZ < rect.width && ((Math.floor(maxX / step) * step - Math.ceil(minX / step) * step) / step < 200)) {
-                for (let xVal = Math.ceil(minX / step) * step; xVal <= Math.floor(maxX / step) * step; xVal += step) {
-                    if (Math.abs(xVal) > LIMIT || xVal === 0) continue;
-                    const pos = toScreen(xVal, 0);
-                    if (pos.y > edge && pos.y < rect.height - edge) {
-                        createAxisLabel(`X ${xVal.toLocaleString()}`, axisZ - 8, pos.y, 'translate(-100%, -50%)');
-                    }
+            if (aZ > 0 && aZ < w) {
+                for (let xVal = Math.ceil((c.x - halfH) / dynStep) * dynStep; xVal <= Math.floor((c.x + halfH) / dynStep) * dynStep; xVal += dynStep) {
+                    if (!xVal || Math.abs(xVal) > LIMIT) continue;
+                    const posY = toY(xVal);
+                    if (posY > edge && posY < h - edge) createLabel(`X ${xVal.toLocaleString()}`, aZ - 8, posY, 'translate(-100%, -50%)');
                 }
             }
 
-            if (axisX > 0 && axisX < rect.height && ((Math.floor(maxZ / step) * step - Math.ceil(minZ / step) * step) / step < 200)) {
-                for (let zVal = Math.ceil(minZ / step) * step; zVal <= Math.floor(maxZ / step) * step; zVal += step) {
+            if (aX > 0 && aX < h) {
+                for (let zVal = Math.ceil((c.z - halfW) / dynStep) * dynStep; zVal <= Math.floor((c.z + halfW) / dynStep) * dynStep; zVal += dynStep) {
                     if (Math.abs(zVal) > LIMIT) continue;
-                    const pos = toScreen(0, zVal);
-                    if (pos.x > edge && pos.x < rect.width - edge) {
-                        if (zVal === 0) {
-                            createAxisLabel("0", pos.x - 8, axisX + 8, 'translate(-100%, 0%)');
-                        } else {
-                            createAxisLabel(`Z ${zVal.toLocaleString()}`, pos.x, axisX + 8, 'translateX(-50%)');
-                        }
+                    const posX = toX(zVal);
+                    if (posX > edge && posX < w - edge) {
+                        createLabel(zVal === 0 ? "0" : `Z ${zVal.toLocaleString()}`, posX - (zVal === 0 ? 8 : 0), aX + 8, zVal === 0 ? 'translate(-100%, 0%)' : 'translateX(-50%)');
                     }
                 }
             }
         }
 
         if (pointsLayer) {
-            pointsLayer.innerHTML = '';
-            if (pointsData?.length > 0) {
+            pointsLayer.textContent = '';
+            if (pointsData?.length) {
+                const frag = document.createDocumentFragment();
                 pointsData.forEach(p => {
-                    if (p.x === undefined || p.z === undefined || Math.abs(p.x) > LIMIT || Math.abs(p.z) > LIMIT) return;
-                    const pointLayer = p.layer ?? 0;
+                    if (!p || p.x === undefined || Math.abs(p.x) > LIMIT || Math.abs(p.z) > LIMIT) return;
+                    const layer = p.layer ?? 0;
+                    if ((visStuds > 2e7 && layer < 2) || (visStuds > 2e5 && visStuds <= 2e7 && layer < 1)) return;
 
-                    if (visibleWidthInStuds > 20000000) {
-                        if (pointLayer < 2) return;
-                    } 
-                    else if (visibleWidthInStuds > 200000) {
-                        if (pointLayer < 1) return;
-                    }
+                    const pX = toX(p.z), pY = toY(p.x);
+                    if (!inView(pX, pY)) return;
 
-                    const pos = toScreen(p.x, p.z);
-                    if (!isElementInViewport(pos.x, pos.y, 0)) return;
-
-                    const container = document.createElement('div');
-                    container.className = 'map-point-container';
-                    Object.assign(container.style, {
-                        position: 'absolute',
-                        left: `${pos.x}px`,
-                        top: `${pos.y}px`
-                    });
+                    const cont = document.createElement('div');
+                    cont.className = 'map-point-container';
+                    Object.assign(cont.style, { position: 'absolute', left: `${pX}px`, top: `${pY}px`, cursor: 'pointer', pointerEvents: 'auto' });
 
                     const marker = document.createElement('div');
                     marker.className = 'point-marker';
-                    if (p.color) {
-                        marker.style.backgroundColor = p.color;
-                        marker.style.boxShadow = `0 0 8px ${p.color}`;
-                    }
-                    container.appendChild(marker);
+                    if (p.color) Object.assign(marker.style, { backgroundColor: p.color, boxShadow: `0 0 8px ${p.color}` });
+                    cont.appendChild(marker);
 
                     if (p.name) {
                         const lbl = document.createElement('span');
                         lbl.className = 'point-label';
                         lbl.textContent = p.name;
-                        container.appendChild(lbl);
+                        cont.appendChild(lbl);
                     }
-                    container.style.cursor = 'pointer';
-                    container.style.pointerEvents = 'auto';
 
-                    container.addEventListener('click', (event) => {
-                        event.stopPropagation();
-                        if (window.MapUI) {
-                            window.MapUI.openSidebarWithData(p);
-                        }
+                    cont.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        window.MapUI?.openSidebarWithData(p);
                     });
-                    pointsLayer.appendChild(container);
+                    frag.appendChild(cont);
                 });
+                pointsLayer.appendChild(frag);
             }
         }
     }
-    
+
+    function createLabel(txt, x, y, transform) {
+        const lbl = document.createElement('div');
+        lbl.className = 'dynamic-axis-label';
+        lbl.textContent = txt;
+        Object.assign(lbl.style, { position: 'absolute', left: `${x}px`, top: `${y}px`, transform });
+        labelsLayer.appendChild(lbl);
+    }
+
+    function renderActiveViewportContent() {
+        if (isRenderPending) return;
+        isRenderPending = true;
+        requestAnimationFrame(() => { drawViewport(); isRenderPending = false; });
+    }
+
     function loadLevel(levelNum = 0) {
-        const file = `./levelData/level-${levelNum}.json`;
-
-        fetch(file)
-            .then(res => {
-                if (!res.ok) throw new Error(`Level data missing for level-${levelNum}`);
-                return res.json();
-            })
+        fetch(`./levelData/level-${levelNum}.json`)
+            .then(res => res.ok ? res.json() : Promise.reject(`Level data missing for level-${levelNum}`))
             .then(data => {
-                currentLevelData = data;
-                wallData = data.walls || [];
-                pointsData = data.locations || [];
-                sectorNamesData = data.sectors || {};
+                currentLevelData = data.autoCenter ? centerLevelData(data) : data;
+                wallData = currentLevelData.walls || [];
+                pointsData = currentLevelData.locations || [];
+                sectorNamesData = currentLevelData.sectors || {};
 
-                const levelId = data.levelId || `Level-${levelNum}`;
+                const levelId = currentLevelData.levelId || `Level-${levelNum}`;
                 if (coordTagEl) coordTagEl.textContent = levelId;
 
-                if (window.MapUI) {
-                    window.MapUI.openSidebarWithData({
-                        name: levelId,
-                        description: data.description || 'No level description provided.',
-                        trelloUrl: data.trelloUrl || null
-                    });
-                }
-                
+                window.MapUI?.openSidebarWithData({
+                    name: levelId,
+                    description: currentLevelData.description || 'No level description provided.',
+                    trelloUrl: currentLevelData.trelloUrl || null
+                });
+
                 if (window.MapEngine) {
-                    const activeLimit = data.limit || 1000000000;
-                    window.MapEngine.setLimit(activeLimit);
+                    const activeLimit = currentLevelData.limit || 1e9;
 
-                    const totalMapExtent = data.mapSize || activeLimit;
+                    const mapRect = mapSurface.getBoundingClientRect();
+                    const minDim = Math.min(mapRect.width, mapRect.height) || 800;
 
-                    const rect = wallsLayer.parentElement?.getBoundingClientRect() || { width: window.innerWidth, height: window.innerHeight };
-                    const viewportWidth = rect.width || window.innerWidth;
-                    const viewportHeight = rect.height || window.innerHeight;
-                    const minDimension = Math.min(viewportWidth, viewportHeight);
+                    let maxWallDist = 500; 
+                    if (currentLevelData.walls?.length) {
+                        currentLevelData.walls.forEach(w => {
+                            if (w && w.x !== undefined && w.z !== undefined) {
+                                maxWallDist = Math.max(maxWallDist, Math.abs(w.x), Math.abs(w.z));
+                            }
+                        });
+                    }
 
-                    const idealStudsPerPixel = (totalMapExtent * 2 * 1.1) / minDimension;
-
-                    window.MapEngine.maxStudsPerPixel = idealStudsPerPixel;
+                    window.MapEngine.maxStudsPerPixel = ((currentLevelData.mapSize || activeLimit) * 2.2) / minDim;
                     window.MapEngine.minStudsPerPixel = 0.05;
-                    window.MapEngine.studsPerPixel = idealStudsPerPixel;
-                    window.MapEngine.centerCoords = { x: 0, z: 0 };
+                    window.MapEngine.studsPerPixel = (maxWallDist * 2.4) / minDim;
 
+                    window.MapEngine.centerCoords = { x: 0, z: 0 };
                     window.MapEngine.onViewportChange = renderActiveViewportContent;
+
+                    window.MapEngine.setLimit(activeLimit);
                     window.MapEngine.applyTransform();
                 }
             })
             .catch(err => {
-                console.warn(err.message, "Defaulting to empty viewport.");
+                console.warn(err, "Defaulting to empty viewport.");
                 wallData = []; pointsData = []; sectorNamesData = {};
                 if (coordTagEl) coordTagEl.textContent = `Level-${levelNum}`;
-                if (window.MapEngine) window.MapEngine.applyTransform();
+                window.MapEngine?.applyTransform();
             });
     }
 
     loadLevel(0);
-
-    window.MapOverlay = {
-        loadLevel
-    };
+    window.MapOverlay = { loadLevel };
 })();
