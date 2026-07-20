@@ -8,6 +8,7 @@
     function closeSidebar() {
         if (sidebar) {
             sidebar.classList.remove('open');
+            sidebar.inert = true
         }
     }
 
@@ -35,6 +36,7 @@
         }
 
         sidebar.classList.add('open');
+        sidebar.inert = false;
     }
 
     if (closeBtn) {
