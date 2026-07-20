@@ -3,11 +3,9 @@
     const mapSurface = document.querySelector('.map-surface');
     const axisOverlay = document.querySelector('.axis-overlay');
     const coordinateOutput = document.querySelector('[data-coordinate]');
-    const zoomLabel = document.querySelector('[data-zoom-label]');
 
     const axisLineV = document.querySelector('.axis-line--vertical');
     const axisLineH = document.querySelector('.axis-line--horizontal');
-    const labelsLayer = document.querySelector('.labels-layer');
     const wallsLayer = document.querySelector('.walls-layer');
 
     const borderLeftEl = document.querySelector('.border-line--left');
@@ -15,7 +13,7 @@
     const borderTopEl = document.querySelector('.border-line--top');
     const borderBottomEl = document.querySelector('.border-line--bottom');
 
-    const LIMIT = 1000000000;
+    let LIMIT = 1000000000;
 
     let centerXCoord = 0; 
     let centerZCoord = 0; 
@@ -46,10 +44,6 @@
         const rect = mapSurface.getBoundingClientRect();
         centerXCoord = clamp(centerXCoord, -LIMIT, LIMIT);
         centerZCoord = clamp(centerZCoord, -LIMIT, LIMIT);
-
-        if (zoomLabel) {
-            zoomLabel.textContent = `${((1 / studsPerPixel) * 100).toFixed(4)}%`;
-        }
 
         updateDynamicGrid(rect.width, rect.height);
 
@@ -231,6 +225,8 @@
 
     function beginDrag(event) {
         if (event.button !== 0) return;
+        if (event.target.closest('.map-point-container') || event.target.closest('.ui-info-sidebar')) return;
+        
         dragging = true;
         startX = event.clientX; startY = event.clientY;
         startCenterX = centerXCoord; startCenterZ = centerZCoord;
@@ -275,6 +271,7 @@
 
     window.MapEngine = {
         applyTransform,
+        setLimit: (newLimit) => { LIMIT = newLimit || 1000000000; },
         get studsPerPixel() { return studsPerPixel; },
         get centerCoords() { return { x: centerXCoord, z: centerZCoord }; },
         get LIMIT() { return LIMIT; },

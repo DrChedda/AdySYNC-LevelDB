@@ -164,17 +164,36 @@ body {
 	margin-left: calc(-46px * var(--inverse-zoom));
 }
 .coord-readout {
-	position: absolute;
-	top: 16px;
-	left: 16px;
-	z-index: 50;
-	padding: 10px 12px;
-	min-width: 138px;
-	background: linear-gradient(180deg, rgba(13, 16, 18, 0.58), rgba(8, 10, 12, 0.42));
-	border: 1px solid rgba(118, 123, 121, 0.16);
-	border-radius: 12px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-	backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 365px;
+    flex-shrink: 0;
+    font-family: monospace;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: #d1d5db;
+    background: #15181c;
+    border: 1px solid rgba(118, 123, 121, 0.3);
+    padding: 6px 12px;
+    box-sizing: border-box;
+}
+.coord-readout strong {
+    display: flex;
+    justify-content: center;
+    flex: 1;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+.coord-level-tag {
+    color: #8d816d;
+    font-weight: bold;
+    font-size: 11px;
+    text-transform: uppercase;
+    border-right: 1px solid rgba(118, 123, 121, 0.3);
+    padding-right: 10px;
+    flex-shrink: 0;
 }
 .coord-readout span {
 	display: block;
@@ -182,11 +201,6 @@ body {
 	letter-spacing: 0.58em;
 	text-transform: uppercase;
 	color: #828f9d;
-}
-.coord-readout strong {
-	display: block;
-	margin-top: 2px;
-	font-size: 0.96rem;
 }
 .zoom-controls {
 	position: absolute;
@@ -249,8 +263,9 @@ body {
     justify-content: center;
     width: 0;
     height: 0;
-    pointer-events: none;
+    pointer-events: auto;
     transform: translate(-50%, -50%);
+    cursor: pointer;
 }
 .point-marker {
     position: absolute;
@@ -338,4 +353,147 @@ body {
     background: rgba(15, 15, 15, 0.8);
     padding: 2px 6px;
     border-radius: 4px;
+}
+.ui-level-selector {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50px;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 16px;
+    background: #0e1012;
+    border-bottom: 2px solid rgba(118, 123, 121, 0.4);
+    box-sizing: border-box;
+}
+.ui-level-btn {
+    background: #1a1d21;
+    color: #a3a8a6;
+    border: 1px solid rgba(118, 123, 121, 0.3);
+    border-radius: 0;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+.ui-level-btn:hover {
+    background: #252a30;
+    color: #ffffff;
+}
+
+.ui-level-btn.active {
+    background: #2e353d;
+    color: #ffffff;
+    border-color: #8d816d;
+}
+.level-btn-group {
+    display: flex;
+    gap: 8px;
+    margin-left: 50px;
+    flex-shrink: 0;
+}
+.ui-info-sidebar {
+    position: fixed;
+    top: 50px;
+    right: 0;
+    bottom: 0;
+    width: 340px;
+    z-index: 70;
+    background: #0e1012;
+    border-left: 2px solid rgba(118, 123, 121, 0.4);
+    border-top: none;
+    border-radius: 0;
+    box-shadow: -6px 0 20px rgba(0, 0, 0, 0.6);
+    padding: 20px;
+    transform: translateX(100%);
+    transition: transform 0.25s ease-in-out;
+    pointer-events: none;
+}
+
+.ui-info-sidebar.open {
+    transform: translateX(0);
+}
+
+.sidebar-scroll-wrapper {
+    height: 100%;
+    overflow-y: auto;
+    pointer-events: auto;
+}
+.sidebar-close-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    background: #1a1d21;
+    color: #a3a8a6;
+    border: 1px solid rgba(118, 123, 121, 0.4);
+    border-radius: 0;
+    font-family: monospace;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    z-index: 100;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.sidebar-close-btn:hover {
+    background: #8d1d1d;
+    color: #ffffff;
+    border-color: #ff5555;
+}
+.sidebar-trello-wrapper a {
+    border-radius: 0;
+}
+.sidebar-close-btn:hover {
+    color: #ff3366;
+}
+.sidebar-title {
+    margin: 0 0 12px 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #ffd97d;
+    letter-spacing: 0.02em;
+    padding-right: 20px;
+}
+.sidebar-divider {
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255, 217, 125, 0.25), transparent);
+    margin-bottom: 16px;
+}
+.sidebar-desc {
+    font-size: 0.86rem;
+    line-height: 1.6;
+    color: rgba(245, 239, 226, 0.75);
+    margin-bottom: 20px;
+}
+.trello-embed-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px;
+    background: #0079bf;
+    color: #ffffff;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: bold;
+    box-shadow: 0 4px 12px rgba(0, 121, 191, 0.3);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.trello-embed-link:hover {
+    background: #0067a3;
+    transform: translateY(-1px);
 }

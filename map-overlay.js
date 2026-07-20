@@ -2,7 +2,9 @@
 (function() {
     const wallsLayer = document.querySelector('.walls-layer');
     const pointsLayer = document.querySelector('.points-layer');
+    const coordTagEl = document.querySelector('.coord-level-tag');
 
+    let currentLevelData = null;
     let wallData = [], pointsData = [], sectorNamesData = {};
 
     const getColumnLetter = col => {
@@ -85,39 +87,33 @@
             const minX = centerCoords.x - halfH, maxX = centerCoords.x + halfH;
 
             const boundaryBox = labelsLayer.querySelector('.map-boundary-box');
-            let isBoxVisible = false;
-
             if (boundaryBox) {
-                if (visibleWidthInStuds <= 20000000) {
-                    const boxMinLimit = -2100000;
-                    const boxMaxLimit = 2100000;
+                const borderLimit = currentLevelData?.worldBorder;
+
+                if (borderLimit && visibleWidthInStuds <= 20000000) {
+                    const boxMinLimit = -borderLimit;
+                    const boxMaxLimit = borderLimit;
 
                     const boxLeft = screenCenterX - ((boxMaxLimit - centerCoords.z) / studsPerPixel);
                     const boxRight = screenCenterX - ((boxMinLimit - centerCoords.z) / studsPerPixel);
                     const boxTop = screenCenterY + ((boxMinLimit - centerCoords.x) / studsPerPixel);
                     const boxBottom = screenCenterY + ((boxMaxLimit - centerCoords.x) / studsPerPixel);
 
-                    const boxWidth = boxRight - boxLeft;
-                    const boxHeight = boxBottom - boxTop;
-
                     Object.assign(boundaryBox.style, { 
                         left: `${boxLeft}px`, 
                         top: `${boxTop}px`, 
-                        width: `${boxWidth}px`, 
-                        height: `${boxHeight}px`,
+                        width: `${boxRight - boxLeft}px`, 
+                        height: `${boxBottom - boxTop}px`,
                         display: 'block'
                     });
-                    isBoxVisible = true;
-                }
-                
-                if (!isBoxVisible) {
+                } else {
                     boundaryBox.style.display = 'none';
                 }
             }
 
-            if (visibleWidthInStuds < 20000000) {
+            if (currentLevelData?.hasSectors && visibleWidthInStuds < 20000000) {
                 const stepSz = 1000000;
-                const scale = Math.max(0.01, Math.min(1.0, 3200 / studsPerPixel));
+                const scale = Math.max(0.2, Math.min(1.0, 3200 / studsPerPixel));
 
                 const startRow = Math.floor((minX + 500000) / stepSz);
                 const endRow = Math.floor((maxX + 500000) / stepSz);
@@ -134,17 +130,20 @@
 
                             const pos = toScreen(worldX, worldZ);
 
-                            if (isElementInViewport(pos.x, pos.y, 0)) {
+                            if (isElementInViewport(pos.x, pos.y, 100)) {
                                 const sectorId = `${r}|${getColumnLetter(c)}`;
+                                const customName = sectorNamesData[sectorId];
+
                                 const label = document.createElement('div');
                                 label.className = 'sector-title-label';
-                                label.textContent = sectorNamesData[sectorId] ? `Sector ${sectorNamesData[sectorId]} (${sectorId})` : `Sector ${sectorId}`;
+                                label.textContent = customName ? `Sector ${customName} (${sectorId})` : `Sector ${sectorId}`;
 
                                 Object.assign(label.style, {
                                     position: 'absolute', 
                                     left: `${pos.x}px`, 
                                     top: `${pos.y}px`,
-                                    transform: `scale(${scale}) translate(4px, 4px)`
+                                    transform: `scale(${scale}) translate(4px, 4px)`,
+                                    pointerEvents: 'none'
                                 });
 
                                 labelsLayer.appendChild(label);
@@ -195,11 +194,16 @@
             if (pointsData?.length > 0) {
                 pointsData.forEach(p => {
                     if (p.x === undefined || p.z === undefined || Math.abs(p.x) > LIMIT || Math.abs(p.z) > LIMIT) return;
-                    const layer = p.layer ?? 0;
-                    if ((layer === 0 && visibleWidthInStuds > 200000) || (layer === 1 && visibleWidthInStuds > 20000000)) return;
+                    const pointLayer = p.layer ?? 0;
+
+                    if (visibleWidthInStuds > 20000000) {
+                        if (pointLayer < 2) return;
+                    } 
+                    else if (visibleWidthInStuds > 200000) {
+                        if (pointLayer < 1) return;
+                    }
 
                     const pos = toScreen(p.x, p.z);
-                    
                     if (!isElementInViewport(pos.x, pos.y, 0)) return;
 
                     const container = document.createElement('div');
@@ -224,21 +228,55 @@
                         lbl.textContent = p.name;
                         container.appendChild(lbl);
                     }
+                    container.style.cursor = 'pointer';
+                    container.style.pointerEvents = 'auto';
+
+                    container.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                        if (window.MapUI) {
+                            window.MapUI.openSidebarWithData(p);
+                        }
+                    });
                     pointsLayer.appendChild(container);
                 });
             }
         }
     }
 
-    Promise.all([
-        fetch('./coordinateFiles/InfiniteLandsWalls.json').then(res => res.json()).catch(() => []),
-        fetch('./coordinateFiles/locations.json').then(res => res.json()).catch(() => []),
-        fetch('./coordinateFiles/sectors.json').then(res => res.json()).catch(() => ({}))
-    ])
-    .then(([walls, points, sectors]) => {
-        wallData = walls; pointsData = points; sectorNamesData = sectors;
-        window.MapEngine.onViewportChange = renderActiveViewportContent;
-        window.MapEngine.applyTransform();
-    })
-    .catch(err => console.error("Error loading map assets:", err));
+    function loadLevel(levelNum = 0) {
+        const file = `./levelData/level-${levelNum}.json`;
+
+        fetch(file)
+            .then(res => {
+                if (!res.ok) throw new Error(`Level data missing for level-${levelNum}`);
+                return res.json();
+            })
+            .then(data => {
+                currentLevelData = data;
+                wallData = data.walls || [];
+                pointsData = data.locations || [];
+                sectorNamesData = data.sectors || {};
+
+                const levelId = data.levelId || `Level-${levelNum}`;
+                if (coordTagEl) coordTagEl.textContent = levelId;
+                
+                if (window.MapEngine) {
+                    window.MapEngine.setLimit(data.limit || 1000000000);
+                    window.MapEngine.onViewportChange = renderActiveViewportContent;
+                    window.MapEngine.applyTransform();
+                }
+            })
+            .catch(err => {
+                console.warn(err.message, "Defaulting to empty viewport.");
+                wallData = []; pointsData = []; sectorNamesData = {};
+                if (coordTagEl) coordTagEl.textContent = `Level-${levelNum}`;
+                if (window.MapEngine) window.MapEngine.applyTransform();
+            });
+    }
+
+    loadLevel(0);
+
+    window.MapOverlay = {
+        loadLevel
+    };
 })();

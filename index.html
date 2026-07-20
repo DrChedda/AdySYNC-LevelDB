@@ -31,19 +31,31 @@
 
           <div class="points-layer"></div>
         </div>
-
-        <div class="coord-readout" aria-label="Current coordinates">
-          <span>Level-0</span>
-          <strong data-coordinate>X 0, Z 0</strong>
-        </div>
-
-        <div class="zoom-controls" aria-label="Map zoom controls">
-          <span class="zoom-level" data-zoom-label>100%</span>
-        </div>
       </div>
     </div>
 
+    <div class="ui-level-selector" aria-label="Level layer selection">
+      <div class="coord-readout" aria-label="Current coordinates">
+        <span class="coord-level-tag">Level-0</span>
+        <strong data-coordinate>X 0, Z 0</strong>
+      </div>
+      <div class="level-btn-group">
+        </div>
+    </div>
+
+    <aside class="ui-info-sidebar" id="infoSidebar" aria-hidden="true">
+      <button class="sidebar-close-btn" id="closeSidebar" aria-label="Close details panel">&times;</button>
+      <div class="sidebar-scroll-wrapper">no
+        <h2 class="sidebar-title" id="sidebarTitle">Select an Object</h2>
+        <div class="sidebar-divider"></div>
+        <p class="sidebar-desc" id="sidebarDesc">Click any interactive coordinate marker point across the sector map fields to initialize database lookups.</p>
+        
+        <div class="sidebar-trello-wrapper" id="sidebarTrello"></div>
+      </div>
+    </aside>
+
     <script src="map-handler.js"></script>
+    <script src="ui-controller.js"></script>
     <script src="map-overlay.js"></script>
   </body>
 </html>
