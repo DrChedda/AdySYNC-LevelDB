@@ -90,7 +90,7 @@
             if (boundaryBox) {
                 const borderLimit = currentLevelData?.worldBorder;
 
-                if (borderLimit && visibleWidthInStuds <= 20000000) {
+                if (typeof borderLimit === 'number' && borderLimit > 0 && visibleWidthInStuds <= 20000000) {
                     const boxMinLimit = -borderLimit;
                     const boxMaxLimit = borderLimit;
 
@@ -242,7 +242,7 @@
             }
         }
     }
-
+    
     function loadLevel(levelNum = 0) {
         const file = `./levelData/level-${levelNum}.json`;
 
@@ -259,9 +259,33 @@
 
                 const levelId = data.levelId || `Level-${levelNum}`;
                 if (coordTagEl) coordTagEl.textContent = levelId;
+
+                if (window.MapUI) {
+                    window.MapUI.openSidebarWithData({
+                        name: levelId,
+                        description: data.description || 'No level description provided.',
+                        trelloUrl: data.trelloUrl || null
+                    });
+                }
                 
                 if (window.MapEngine) {
-                    window.MapEngine.setLimit(data.limit || 1000000000);
+                    const activeLimit = data.limit || 1000000000;
+                    window.MapEngine.setLimit(activeLimit);
+
+                    const totalMapExtent = data.mapSize || activeLimit;
+
+                    const rect = wallsLayer.parentElement?.getBoundingClientRect() || { width: window.innerWidth, height: window.innerHeight };
+                    const viewportWidth = rect.width || window.innerWidth;
+                    const viewportHeight = rect.height || window.innerHeight;
+                    const minDimension = Math.min(viewportWidth, viewportHeight);
+
+                    const idealStudsPerPixel = (totalMapExtent * 2 * 1.1) / minDimension;
+
+                    window.MapEngine.maxStudsPerPixel = idealStudsPerPixel;
+                    window.MapEngine.minStudsPerPixel = 0.05;
+                    window.MapEngine.studsPerPixel = idealStudsPerPixel;
+                    window.MapEngine.centerCoords = { x: 0, z: 0 };
+
                     window.MapEngine.onViewportChange = renderActiveViewportContent;
                     window.MapEngine.applyTransform();
                 }

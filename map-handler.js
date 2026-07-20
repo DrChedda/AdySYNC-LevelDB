@@ -211,17 +211,20 @@
     }
 
     function handleWheel(event) {
-        event.preventDefault();
-        const rect = mapSurface.getBoundingClientRect();
-        const targetWorld = toWorld(event.clientX - rect.left, event.clientY - rect.top, rect);
+    event.preventDefault();
+    const rect = mapSurface.getBoundingClientRect();
+    const targetWorld = toWorld(event.clientX - rect.left, event.clientY - rect.top, rect);
 
-        studsPerPixel = Math.max(0.05, Math.min(4000000, studsPerPixel * (event.deltaY < 0 ? 1 / 1.2 : 1.2)));
+    const maxZoomOut = window.MapEngine.maxStudsPerPixel || 4000000;
+    const minZoomIn = window.MapEngine.minStudsPerPixel || 0.05;
+    
+    studsPerPixel = Math.max(minZoomIn, Math.min(maxZoomOut, studsPerPixel * (event.deltaY < 0 ? 1 / 1.2 : 1.2)));
 
-        centerZCoord = clamp(targetWorld.z + (((event.clientX - rect.left) - rect.width / 2) * studsPerPixel), -LIMIT, LIMIT);
-        centerXCoord = clamp(targetWorld.x - (((event.clientY - rect.top) - rect.height / 2) * studsPerPixel), -LIMIT, LIMIT);
+    centerZCoord = clamp(targetWorld.z + (((event.clientX - rect.left) - rect.width / 2) * studsPerPixel), -LIMIT, LIMIT);
+    centerXCoord = clamp(targetWorld.x - (((event.clientY - rect.top) - rect.height / 2) * studsPerPixel), -LIMIT, LIMIT);
 
-        applyTransform();
-    }
+    applyTransform();
+}
 
     function beginDrag(event) {
         if (event.button !== 0) return;

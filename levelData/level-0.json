@@ -1,8 +1,10 @@
 {
     "levelId": "Level-0",
+    "description": "Level-0, “Infinite Yellow Corridors” is one of the Main Nine levels of the Backrooms; an expansive and arguably infinite space of identical structures comprised of worn, mono-yellow wallpaper, old moist carpet and fluorescent lighting which constantly emits a consistent humbuzz.",
+    "trelloUrl": "https://trello.com/c/kyG1dBLy/5-infinite-yellow-corridors",
     "limit": 1000000000,
     "hasSectors": true,
-    "walls": [          
+    "walls": [
             { "x": -5458, "z": 1573 },
             { "x": -5458, "z": 2254 },
             { "x": -5487, "z": 2279 },

@@ -1,0 +1,11 @@
+{
+    "levelId": "Level-0.5",
+    "description": "Level-0.5, “The Old Orange Halls” is an unstable sub-level of Level-0. It takes on an orange appearance and is much dimmer than its yellow counterpart. The terrain of 0.5 is highly unstable and difficult to traverse, often filled with insane architecture, unpredictable layouts and unstable ground.",
+    "trelloUrl": "https://trello.com/c/C0SrLHmS/77-the-old-orange-halls",
+    "limit": 20000,
+    "hasSectors": false,
+    "walls": [
+    ],
+    "locations": [
+    ]
+}

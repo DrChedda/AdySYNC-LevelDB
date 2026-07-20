@@ -1,19 +1,37 @@
 (function() {
-    const AVAILABLE_LEVELS = [0]; 
+    const AVAILABLE_LEVELS = [
+        { id: '0', label: 'Level 0' },
+        { id: '0.3', label: 'Level 0.3', parent: '0' },
+        { id: '0.35', label: 'Level 0.35', parent: '0' },
+        { id: '0.5', label: 'Level 0.5', parent: '0' },                
+        { id: '0.7', label: 'Level 0.7', parent: '0' },
+        { id: '0.775', label: 'Level 0.775', parent: '0' },
+        { id: '1', label: 'Level 1' },
+        { id: '1.0090', label: 'Level 1.0090', parent: '1'},
+    ];
 
     const sidebar = document.querySelector('.ui-info-sidebar');
     const closeBtn = document.querySelector('.sidebar-close-btn') || document.querySelector('#closeSidebar');
     const levelGroupContainer = document.querySelector('.level-btn-group');
 
+    let currentActiveLevel = '0';
+
+    function getRootParentId(levelId) {
+        const levelObj = AVAILABLE_LEVELS.find(lvl => lvl.id === levelId);
+        return levelObj?.parent || levelObj?.id || levelId;
+    }
+
     function closeSidebar() {
         if (sidebar) {
             sidebar.classList.remove('open');
-            sidebar.inert = true
+            sidebar.inert = true;
         }
     }
 
     function openSidebarWithData(data) {
         if (!sidebar) return;
+
+        sidebar.inert = false;
 
         const titleEl = sidebar.querySelector('.sidebar-title');
         const descEl = sidebar.querySelector('.sidebar-desc');
@@ -24,19 +42,25 @@
 
         if (trelloContainer) {
             trelloContainer.innerHTML = '';
+
             if (data.trelloUrl) {
+                const quote = document.createElement('blockquote');
+                quote.className = 'trello-card';
+
                 const link = document.createElement('a');
                 link.href = data.trelloUrl;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.className = 'trello-embed-link';
-                link.textContent = 'OPEN TRELLO BOARD';
-                trelloContainer.appendChild(link);
+                link.textContent = 'Trello Card';
+
+                quote.appendChild(link);
+                trelloContainer.appendChild(quote);
+
+                if (window.TrelloCards) {
+                    window.TrelloCards.load(trelloContainer);
+                }
             }
         }
 
         sidebar.classList.add('open');
-        sidebar.inert = false;
     }
 
     if (closeBtn) {
@@ -51,19 +75,30 @@
 
         levelGroupContainer.innerHTML = '';
 
-        AVAILABLE_LEVELS.forEach((levelNum, index) => {
-            const btn = document.createElement('button');
-            btn.className = `ui-level-btn ${index === 0 ? 'active' : ''}`;
-            btn.setAttribute('data-level', levelNum);
-            btn.textContent = `Level ${levelNum}`;
+        const activeRoot = getRootParentId(currentActiveLevel);
 
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.ui-level-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
+        const visibleLevels = AVAILABLE_LEVELS.filter(lvl => {
+            if (!lvl.parent) return true;
+            return lvl.parent === activeRoot;
+        });
+
+        visibleLevels.forEach((lvl) => {
+            const btn = document.createElement('button');
+            const isActive = lvl.id === currentActiveLevel;
+            const isSublevel = Boolean(lvl.parent);
+
+            btn.className = `ui-level-btn ${isActive ? 'active' : ''} ${isSublevel ? 'sub-level-btn' : ''}`;
+            btn.setAttribute('data-level', lvl.id);
+            btn.textContent = lvl.label;
+
+            btn.addEventListener('click', () => {
+                currentActiveLevel = lvl.id;
 
                 if (window.MapOverlay?.loadLevel) {
-                    window.MapOverlay.loadLevel(levelNum);
+                    window.MapOverlay.loadLevel(lvl.id);
                 }
+
+                renderLevelButtons();
             });
 
             levelGroupContainer.appendChild(btn);
