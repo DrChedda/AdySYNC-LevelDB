@@ -60,9 +60,10 @@
 
         if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 
-        const sCX = w / 2, sCY = h / 2;
-        const visStuds = w * spp;
+        const sCX = w / 2; 
+        const sCY = h / 2;
 
+        const visStuds = w * spp;
         const toX = z => sCX - ((z - c.z) / spp);
         const toY = x => sCY + ((x - c.x) / spp);
         const inView = (x, y, pad = 0) => x >= -pad && x <= w + pad && y >= -pad && y <= h + pad;
@@ -71,8 +72,8 @@
         if (wallData?.length > 0) {
             const wallWidth = 3;
             ctx.lineWidth = wallWidth;
-            ctx.strokeStyle = '#ffffff';
-            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#4378c9';
+            ctx.fillStyle = '#4378c9';
 
             if (wallData.length === 1) {
                 const p = wallData[0];
@@ -218,7 +219,7 @@
 
                     cont.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        window.MapUI?.openSidebarWithData(p);
+                        window.MapUI?.updateSidebar(p);
                     });
                     frag.appendChild(cont);
                 });
@@ -253,7 +254,7 @@
                 const levelId = currentLevelData.levelId || `Level-${levelNum}`;
                 if (coordTagEl) coordTagEl.textContent = levelId;
 
-                window.MapUI?.openSidebarWithData({
+                window.MapUI?.updateSidebar({
                     name: levelId,
                     description: currentLevelData.description || 'No level description provided.',
                     trelloUrl: currentLevelData.trelloUrl || null
@@ -262,10 +263,10 @@
                 if (window.MapEngine) {
                     const activeLimit = currentLevelData.limit || 1e9;
 
-                    const mapRect = mapSurface.getBoundingClientRect();
+                    const mapRect = wallsLayer.parentElement.getBoundingClientRect();
                     const minDim = Math.min(mapRect.width, mapRect.height) || 800;
 
-                    let maxWallDist = 500; 
+                    let maxWallDist = 0; 
                     if (currentLevelData.walls?.length) {
                         currentLevelData.walls.forEach(w => {
                             if (w && w.x !== undefined && w.z !== undefined) {
@@ -273,10 +274,12 @@
                             }
                         });
                     }
+                    
+                    const effectiveWallDist = Math.max(maxWallDist, 500);
 
                     window.MapEngine.maxStudsPerPixel = ((currentLevelData.mapSize || activeLimit) * 2.2) / minDim;
                     window.MapEngine.minStudsPerPixel = 0.05;
-                    window.MapEngine.studsPerPixel = (maxWallDist * 2.4) / minDim;
+                    window.MapEngine.studsPerPixel = (effectiveWallDist * 2.4) / minDim;
 
                     window.MapEngine.centerCoords = { x: 0, z: 0 };
                     window.MapEngine.onViewportChange = renderActiveViewportContent;
