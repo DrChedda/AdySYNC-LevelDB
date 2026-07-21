@@ -24,15 +24,23 @@
 
     const clamp = (val, min = -LIMIT, max = LIMIT) => Math.max(min, Math.min(max, val));
 
-    const toScreen = (x, z, r) => ({
-        x: (r.width / 2) - ((z - centerZ) / studsPerPixel),
-        y: (r.height / 2) + ((x - centerX) / studsPerPixel)
+    const toWorld = (sX, sY, r) => ({
+        z: clamp(Math.round(centerZ - ((sX - r.width * 0.5) * studsPerPixel))),
+        x: clamp(Math.round(centerX + ((sY - r.height * 0.5) * studsPerPixel)))
     });
 
-    const toWorld = (sX, sY, r) => ({
-        z: clamp(Math.round(centerZ - ((sX - r.width / 2) * studsPerPixel))),
-        x: clamp(Math.round(centerX + ((sY - r.height / 2) * studsPerPixel)))
-    });
+    function getSteps(rawStep) {
+        let pwr = 1;
+        let temp = rawStep;
+        if (temp >= 1) {
+            while (temp >= 10) { temp /= 10; pwr *= 10; }
+        } else {
+            while (temp < 1) { temp *= 10; pwr /= 10; }
+        }
+        const ratio = rawStep / pwr;
+        const majorStep = pwr * (ratio >= 5 ? 5 : ratio >= 2 ? 2 : 1);
+        return { majorStep, minorStep: majorStep / 5 };
+    }
 
     function applyTransform() {
         if (isPending) return;
@@ -59,18 +67,27 @@
         }
         gridCtx.clearRect(0, 0, w, h);
 
-        const rect = { width: w, height: h };
-        const bL = toScreen(0, LIMIT, rect).x, bR = toScreen(0, -LIMIT, rect).x;
-        const bT = toScreen(LIMIT, 0, rect).y, bB = toScreen(-LIMIT, 0, rect).y;
+        const invSpp = 1 / studsPerPixel;
+        const halfW = w * 0.5;
+        const halfH = h * 0.5;
+        const xOrigin = halfW + (centerZ * invSpp);
+        const yOrigin = halfH - (centerX * invSpp);
+
+        const toScreenX = z => xOrigin - (z * invSpp);
+        const toScreenY = x => yOrigin + (x * invSpp);
+
+        const bL = toScreenX(LIMIT), bR = toScreenX(-LIMIT);
+        const bT = toScreenY(LIMIT), bB = toScreenY(-LIMIT);
 
         const cL = Math.max(0, bL), cR = Math.min(w, bR);
         const cT = Math.max(0, bB), cB = Math.min(h, bT);
         const bW = cR - cL, bH = cB - cT;
 
-        const origin = toScreen(0, 0, rect);
+        const originX = toScreenX(0);
+        const originY = toScreenY(0);
 
-        if (axisV) setBorder(axisV, !(origin.x < bL || origin.x > bR || cT >= cB), { left: `${origin.x}px`, top: `${cT}px`, height: `${bH}px` });
-        if (axisH) setBorder(axisH, !(origin.y < bB || origin.y > bT || cL >= cR), { top: `${origin.y}px`, left: `${cL}px`, width: `${bW}px` });
+        if (axisV) setBorder(axisV, !(originX < bL || originX > bR || cT >= cB), { left: `${originX}px`, top: `${cT}px`, height: `${bH}px` });
+        if (axisH) setBorder(axisH, !(originY < bB || originY > bT || cL >= cR), { top: `${originY}px`, left: `${cL}px`, width: `${bW}px` });
 
         setBorder(borders.left, bH > 0 && bL >= 0 && bL <= w, { left: `${bL}px`, top: `${cT}px`, width: '3px', height: `${bH}px`, transform: 'translateX(-50%)' });
         setBorder(borders.right, bH > 0 && bR >= 0 && bR <= w, { left: `${bR}px`, top: `${cT}px`, width: '3px', height: `${bH}px`, transform: 'translateX(-50%)' });
@@ -84,47 +101,58 @@
         if (visStuds >= 5e5 && visStuds <= 2e7) {
             majorStep = 1e6; minorStep = 2e5;
         } else {
-            const rawStep = 120 * studsPerPixel;
-            const pwr = 10 ** Math.floor(Math.log10(rawStep));
-            const ratio = rawStep / pwr;
-            majorStep = pwr * (ratio >= 5 ? 5 : ratio >= 2 ? 2 : 1);
-            minorStep = majorStep / 5;
+            const steps = getSteps(120 * studsPerPixel);
+            majorStep = steps.majorStep;
+            minorStep = steps.minorStep;
         }
 
-        const halfMinor = minorStep / 2, halfMajor = majorStep / 2;
-        const startZ = Math.floor((centerZ - (w / 2) * studsPerPixel - halfMinor) / minorStep) * minorStep + halfMinor;
-        const endZ = Math.ceil((centerZ + (w / 2) * studsPerPixel - halfMinor) / minorStep) * minorStep + halfMinor;
-        const startX = Math.floor((centerX - (h / 2) * studsPerPixel - halfMinor) / minorStep) * minorStep + halfMinor;
-        const endX = Math.ceil((centerX + (h / 2) * studsPerPixel - halfMinor) / minorStep) * minorStep + halfMinor;
+        const halfMinor = minorStep * 0.5;
+        const minZ = centerZ - halfW * studsPerPixel;
+        const maxZ = centerZ + halfW * studsPerPixel;
+        const minX = centerX - halfH * studsPerPixel;
+        const maxX = centerX + halfH * studsPerPixel;
+        const startIdxZ = Math.floor((minZ - halfMinor) / minorStep);
+        const endIdxZ = Math.ceil((maxZ - halfMinor) / minorStep);
+        const startIdxX = Math.floor((minX - halfMinor) / minorStep);
+        const endIdxX = Math.ceil((maxX - halfMinor) / minorStep);
 
-        if ((endZ - startZ) / minorStep > 500 || bH <= 0 || bW <= 0) return;
+        if ((endIdxZ - startIdxZ) > 500 || bH <= 0 || bW <= 0) return;
+
+        const isMajorIndex = i => ((i - 2) % 5 + 5) % 5 === 0;
 
         for (let pass = 0; pass < 2; pass++) {
             gridCtx.beginPath();
             gridCtx.strokeStyle = pass ? 'rgba(141, 129, 109, 0.25)' : 'rgba(141, 129, 109, 0.08)';
             gridCtx.lineWidth = pass ? 2 : 1;
 
-            for (let z = startZ; z <= endZ; z += minorStep) {
+            for (let i = startIdxZ; i <= endIdxZ; i++) {
+                const z = (i + 0.5) * minorStep;
                 if (Math.abs(z) > LIMIT) continue;
-                const sX = toScreen(0, z, rect).x;
-                if (sX < bL || sX > bR) continue;
 
-                const isMajor = Math.abs((z - halfMajor) % majorStep) < halfMinor;
-                if ((pass && isMajor) || (!pass && !isMajor)) {
-                    gridCtx.moveTo(sX, cT); gridCtx.lineTo(sX, cB);
+                const isMajorStep = isMajorIndex(i);
+                if ((pass && isMajorStep) || (!pass && !isMajorStep)) {
+                    const sX = toScreenX(z);
+                    if (sX >= bL && sX <= bR) {
+                        gridCtx.moveTo(sX, cT);
+                        gridCtx.lineTo(sX, cB);
+                    }
                 }
             }
 
-            for (let x = startX; x <= endX; x += minorStep) {
+            for (let i = startIdxX; i <= endIdxX; i++) {
+                const x = (i + 0.5) * minorStep;
                 if (Math.abs(x) > LIMIT) continue;
-                const sY = toScreen(x, 0, rect).y;
-                if (sY < bB || sY > bT) continue;
 
-                const isMajor = Math.abs((x - halfMajor) % majorStep) < halfMinor;
-                if ((pass && isMajor) || (!pass && !isMajor)) {
-                    gridCtx.moveTo(cL, sY); gridCtx.lineTo(cR, sY);
+                const isMajorStep = isMajorIndex(i);
+                if ((pass && isMajorStep) || (!pass && !isMajorStep)) {
+                    const sY = toScreenY(x);
+                    if (sY >= bB && sY <= bT) {
+                        gridCtx.moveTo(cL, sY);
+                        gridCtx.lineTo(cR, sY);
+                    }
                 }
             }
+
             gridCtx.stroke();
         }
     }
@@ -143,8 +171,8 @@
         const zoomLimits = [window.MapEngine?.minStudsPerPixel || 0.05, window.MapEngine?.maxStudsPerPixel || 4e6];
 
         studsPerPixel = clamp(studsPerPixel * (e.deltaY < 0 ? 1 / 1.2 : 1.2), ...zoomLimits);
-        centerZ = clamp(target.z + ((e.clientX - r.left - r.width / 2) * studsPerPixel));
-        centerX = clamp(target.x - ((e.clientY - r.top - r.height / 2) * studsPerPixel));
+        centerZ = clamp(target.z + ((e.clientX - r.left - r.width * 0.5) * studsPerPixel));
+        centerX = clamp(target.x - ((e.clientY - r.top - r.height * 0.5) * studsPerPixel));
         applyTransform();
     }, { passive: false });
 

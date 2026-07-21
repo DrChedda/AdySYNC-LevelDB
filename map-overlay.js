@@ -12,20 +12,24 @@
 
     let currentLevelData = null, wallData = [], pointsData = [], sectorNamesData = {}, isRenderPending = false;
 
+    const columnLetterCache = new Map();
     const getColumnLetter = col => {
+        if (columnLetterCache.has(col)) return columnLetterCache.get(col);
         const sign = col < 0 ? '-' : '';
         let n = Math.abs(col), res = '';
         while (n >= 0) {
             res = String.fromCharCode((n % 26) + 65) + res;
             n = Math.floor(n / 26) - 1;
         }
-        return sign + res;
+        const val = sign + res;
+        columnLetterCache.set(col, val);
+        return val;
     };
 
     function getDynamicStep(spp) {
         const ideal = 160 * spp;
         if (!ideal || !isFinite(ideal)) return 1e6;
-        const mag = 10 ** Math.floor(Math.log10(ideal));
+        const mag = Math.pow(10, Math.floor(Math.log10(ideal)));
         const r = ideal / mag;
         const step = mag * (r < 1.5 ? 1 : r < 3.5 ? 2 : r < 7.5 ? 5 : 10);
         return Math.max(100, step || 1e6);
@@ -37,12 +41,12 @@
 
         let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
         items.forEach(p => {
-            if (p.x !== undefined) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); }
-            if (p.z !== undefined) { minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z); }
+            if (p.x !== undefined) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; }
+            if (p.z !== undefined) { if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z; }
         });
 
         if (minX === Infinity) return data;
-        const offX = (minX + maxX) / 2, offZ = (minZ + maxZ) / 2;
+        const offX = (minX + maxX) * 0.5, offZ = (minZ + maxZ) * 0.5;
 
         ['walls', 'locations'].forEach(key => {
             if (data[key]) {
@@ -56,16 +60,23 @@
         if (!window.MapEngine) return;
         const { studsPerPixel: spp, centerCoords: c, LIMIT } = window.MapEngine;
         const rect = wallsLayer.parentElement.getBoundingClientRect();
-        const { width: w, height: h } = rect;
+        const w = rect.width, h = rect.height;
 
         if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 
-        const sCX = w / 2; 
-        const sCY = h / 2;
+        const sCX = w * 0.5; 
+        const sCY = h * 0.5;
+        const invSpp = 1 / spp;
 
         const visStuds = w * spp;
-        const toX = z => sCX - ((z - c.z) / spp);
-        const toY = x => sCY + ((x - c.x) / spp);
+        const halfVisW = (w * 0.5) * spp;
+        const halfVisH = (h * 0.5) * spp;
+
+        const minVisZ = c.z - halfVisW, maxVisZ = c.z + halfVisW;
+        const minVisX = c.x - halfVisH, maxVisX = c.x + halfVisH;
+
+        const toX = z => sCX - ((z - c.z) * invSpp);
+        const toY = x => sCY + ((x - c.x) * invSpp);
         const inView = (x, y, pad = 0) => x >= -pad && x <= w + pad && y >= -pad && y <= h + pad;
 
         ctx.clearRect(0, 0, w, h);
@@ -81,14 +92,14 @@
                     const posX = toX(p.z), posY = toY(p.x);
                     if (inView(posX, posY, wallWidth)) {
                         ctx.beginPath();
-                        ctx.arc(posX, posY, wallWidth / 2, 0, Math.PI * 2);
+                        ctx.arc(posX, posY, wallWidth * 0.5, 0, Math.PI * 2);
                         ctx.fill();
                     }
                 }
             } else {
                 ctx.beginPath();
 
-                for (let i = 0; i < wallData.length; i++) {
+                for (let i = 0, len = wallData.length; i < len; i++) {
                     const curr = wallData[i];
                     if (!curr || curr.x === undefined || Math.abs(curr.x) > LIMIT || Math.abs(curr.z) > LIMIT) continue;
 
@@ -102,8 +113,8 @@
 
                     if (!hasNext && !hasPrev) {
                         if (inView(p1X, p1Y, wallWidth)) {
-                            ctx.moveTo(p1X + wallWidth / 2, p1Y);
-                            ctx.arc(p1X, p1Y, wallWidth / 2, 0, Math.PI * 2);
+                            ctx.moveTo(p1X + wallWidth * 0.5, p1Y);
+                            ctx.arc(p1X, p1Y, wallWidth * 0.5, 0, Math.PI * 2);
                         }
                         continue;
                     }
@@ -137,12 +148,12 @@
             }
 
             if (currentLevelData?.hasSectors && visStuds < 2e7) {
-                const step = 1e6, scale = Math.max(0.2, Math.min(1.0, 3200 / spp));
-                const minZ = c.z - (w / 2) * spp, maxZ = c.z + (w / 2) * spp;
-                const minX = c.x - (h / 2) * spp, maxX = c.x + (h / 2) * spp;
+                const step = 1e6; 
+                const referenceSPP = 2000; 
+                const scale = Math.max(0.05, Math.min(5.0, referenceSPP * invSpp));
 
-                const sR = Math.floor((minX + 5e5) / step), eR = Math.floor((maxX + 5e5) / step);
-                const sC = Math.floor((minZ + 5e5) / step), eC = Math.floor((maxZ + 5e5) / step);
+                const sR = Math.floor((minVisX + 5e5) / step), eR = Math.floor((maxVisX + 5e5) / step);
+                const sC = Math.floor((minVisZ + 5e5) / step), eC = Math.floor((maxVisZ + 5e5) / step);
 
                 if ((eR - sR) * (eC - sC) < 400) {
                     const frag = document.createDocumentFragment();
@@ -156,8 +167,16 @@
                                 const secId = `${r}|${getColumnLetter(col)}`;
                                 const lbl = document.createElement('div');
                                 lbl.className = 'sector-title-label';
-                                lbl.textContent = `Sector ${sectorNamesData[secId] ? sectorNamesData[secId] + ` (${secId})` : secId}`;
-                                Object.assign(lbl.style, { position: 'absolute', left: `${posX}px`, top: `${posY}px`, transform: `scale(${scale}) translate(4px, 4px)`, pointerEvents: 'none' });
+                                lbl.textContent = `Sector ${sectorNamesData[secId] ? sectorNamesData[secId] + ` ${secId}` : secId}`;
+                                
+                                Object.assign(lbl.style, { 
+                                    position: 'absolute', 
+                                    left: `${posX}px`, 
+                                    top: `${posY}px`, 
+                                    transformOrigin: 'top left',
+                                    transform: `scale(${scale}) translate(4px, 4px)`, 
+                                    pointerEvents: 'none' 
+                                });
                                 frag.appendChild(lbl);
                             }
                         }
@@ -168,10 +187,9 @@
 
             const dynStep = getDynamicStep(spp), edge = 25;
             const aZ = toX(0), aX = toY(0);
-            const halfW = (w / 2) * spp, halfH = (h / 2) * spp;
 
             if (aZ > 0 && aZ < w) {
-                for (let xVal = Math.ceil((c.x - halfH) / dynStep) * dynStep; xVal <= Math.floor((c.x + halfH) / dynStep) * dynStep; xVal += dynStep) {
+                for (let xVal = Math.ceil((c.x - halfVisH) / dynStep) * dynStep; xVal <= Math.floor((c.x + halfVisH) / dynStep) * dynStep; xVal += dynStep) {
                     if (!xVal || Math.abs(xVal) > LIMIT) continue;
                     const posY = toY(xVal);
                     if (posY > edge && posY < h - edge) createLabel(`X ${xVal.toLocaleString()}`, aZ - 8, posY, 'translate(-100%, -50%)');
@@ -179,7 +197,7 @@
             }
 
             if (aX > 0 && aX < h) {
-                for (let zVal = Math.ceil((c.z - halfW) / dynStep) * dynStep; zVal <= Math.floor((c.z + halfW) / dynStep) * dynStep; zVal += dynStep) {
+                for (let zVal = Math.ceil((c.z - halfVisW) / dynStep) * dynStep; zVal <= Math.floor((c.z + halfVisW) / dynStep) * dynStep; zVal += dynStep) {
                     if (Math.abs(zVal) > LIMIT) continue;
                     const posX = toX(zVal);
                     if (posX > edge && posX < w - edge) {
@@ -195,11 +213,13 @@
                 const frag = document.createDocumentFragment();
                 pointsData.forEach(p => {
                     if (!p || p.x === undefined || Math.abs(p.x) > LIMIT || Math.abs(p.z) > LIMIT) return;
+                    
+                    if (p.x < minVisX || p.x > maxVisX || p.z < minVisZ || p.z > maxVisZ) return;
+
                     const layer = p.layer ?? 0;
                     if ((visStuds > 2e7 && layer < 2) || (visStuds > 2e5 && visStuds <= 2e7 && layer < 1)) return;
 
                     const pX = toX(p.z), pY = toY(p.x);
-                    if (!inView(pX, pY)) return;
 
                     const cont = document.createElement('div');
                     cont.className = 'map-point-container';
