@@ -9,6 +9,18 @@
         { id: '0.775', label: 'Level 0.775', parent: '0' },
         { id: '1', label: 'Level 1' },
         { id: '1.0090', label: 'Level 1.0090', parent: '1'},
+        { id: '1.1', label: 'Level 1.1', parent: '1'},
+        { id: '2', label: 'Level 2' },
+        { id: '3', label: 'Level 3' },
+        { id: '4', label: 'Level 4' },
+        { id: '6', label: 'Level 6' },
+        { id: '6.1', label: 'Level 6.1', parent: '6' },
+        { id: '6.2', label: 'Level 6.2', parent: '6' },
+        { id: '6.3', label: 'Level 6.3', parent: '6' },
+        { id: '8', label: 'Level 8' },
+        { id: '9', label: 'Level 9' },
+        { id: '19', label: 'Level 19' },
+        { id: '21', label: 'Level 21' },
     ];
 
     const sidebar = document.querySelector('.sidebar');
