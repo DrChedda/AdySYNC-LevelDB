@@ -1,3 +1,4 @@
+// ui-controller.js
 (function() {
     const AVAILABLE_LEVELS = [
         { id: '0', label: 'Level 0' },
@@ -10,8 +11,7 @@
         { id: '1.0090', label: 'Level 1.0090', parent: '1'},
     ];
 
-    const sidebar = document.querySelector('.ui-info-sidebar');
-    const closeBtn = document.querySelector('.sidebar-close-btn') || document.querySelector('#closeSidebar');
+    const sidebar = document.querySelector('.sidebar');
     const levelGroupContainer = document.querySelector('.level-btn-group');
 
     let currentActiveLevel = '0';
@@ -21,24 +21,15 @@
         return levelObj?.parent || levelObj?.id || levelId;
     }
 
-    function closeSidebar() {
-        if (sidebar) {
-            sidebar.classList.remove('open');
-            sidebar.inert = true;
-        }
-    }
-
-    function openSidebarWithData(data) {
+    function updateSidebar(data) {
         if (!sidebar) return;
-
-        sidebar.inert = false;
 
         const titleEl = sidebar.querySelector('.sidebar-title');
         const descEl = sidebar.querySelector('.sidebar-desc');
         const trelloContainer = sidebar.querySelector('.sidebar-trello-wrapper');
 
         if (titleEl) titleEl.textContent = data.name || 'Unknown Location';
-        if (descEl) descEl.textContent = data.description || 'No detailed records available.';
+        if (descEl) descEl.textContent = data.description || 'No description provided.';
 
         if (trelloContainer) {
             trelloContainer.innerHTML = '';
@@ -59,15 +50,6 @@
                 }
             }
         }
-
-        sidebar.classList.add('open');
-    }
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            closeSidebar();
-        });
     }
 
     function renderLevelButtons() {
@@ -108,7 +90,6 @@
     renderLevelButtons();
 
     window.MapUI = {
-        openSidebarWithData,
-        closeSidebar
+        updateSidebar
     };
 })();
