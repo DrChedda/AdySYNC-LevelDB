@@ -1,9 +1,15 @@
 // map-overlay.js
 (function() {
+    if (window.MapOverlay?.destroy) {
+        window.MapOverlay.destroy();
+    }
+
     const wallsLayer = document.querySelector('.walls-layer');
     const pointsLayer = document.querySelector('.points-layer');
     const coordTagEl = document.querySelector('.coord-level-tag');
     const labelsLayer = document.querySelector('.labels-layer');
+
+    if (!wallsLayer) return;
 
     const canvas = Object.assign(document.createElement('canvas'), { className: 'walls-canvas' });
     Object.assign(canvas.style, { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none' });
@@ -15,6 +21,9 @@
     const columnLetterCache = new Map();
     const getColumnLetter = col => {
         if (columnLetterCache.has(col)) return columnLetterCache.get(col);
+        
+        if (columnLetterCache.size > 2000) columnLetterCache.clear();
+
         const sign = col < 0 ? '-' : '';
         let n = Math.abs(col), res = '';
         while (n >= 0) {
@@ -67,14 +76,11 @@
         const sCX = w * 0.5; 
         const sCY = h * 0.5;
         const invSpp = 1 / spp;
-
         const visStuds = w * spp;
         const halfVisW = (w * 0.5) * spp;
         const halfVisH = (h * 0.5) * spp;
-
         const minVisZ = c.z - halfVisW, maxVisZ = c.z + halfVisW;
         const minVisX = c.x - halfVisH, maxVisX = c.x + halfVisH;
-
         const toX = z => sCX - ((z - c.z) * invSpp);
         const toY = x => sCY + ((x - c.x) * invSpp);
         const inView = (x, y, pad = 0) => x >= -pad && x <= w + pad && y >= -pad && y <= h + pad;
@@ -105,9 +111,7 @@
 
                     const next = wallData[i + 1];
                     const prev = wallData[i - 1];
-
                     const p1X = toX(curr.z), p1Y = toY(curr.x);
-
                     const hasNext = next && next.x !== undefined && Math.abs(next.x) <= LIMIT && Math.abs(next.z) <= LIMIT;
                     const hasPrev = prev && prev.x !== undefined && Math.abs(prev.x) <= LIMIT && Math.abs(prev.z) <= LIMIT;
 
@@ -151,7 +155,6 @@
                 const step = 1e6; 
                 const referenceSPP = 2000; 
                 const scale = Math.max(0.05, Math.min(5.0, referenceSPP * invSpp));
-
                 const sR = Math.floor((minVisX + 5e5) / step), eR = Math.floor((maxVisX + 5e5) / step);
                 const sC = Math.floor((minVisZ + 5e5) / step), eC = Math.floor((maxVisZ + 5e5) / step);
 
@@ -223,6 +226,7 @@
 
                     const cont = document.createElement('div');
                     cont.className = 'map-point-container';
+                    cont._pointData = p; 
                     Object.assign(cont.style, { position: 'absolute', left: `${pX}px`, top: `${pY}px`, cursor: 'pointer', pointerEvents: 'auto' });
 
                     const marker = document.createElement('div');
@@ -237,15 +241,23 @@
                         cont.appendChild(lbl);
                     }
 
-                    cont.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        window.MapUI?.updateSidebar(p);
-                    });
                     frag.appendChild(cont);
                 });
                 pointsLayer.appendChild(frag);
             }
         }
+    }
+
+    const handlePointClick = (e) => {
+        const target = e.target.closest('.map-point-container');
+        if (target && target._pointData) {
+            e.stopPropagation();
+            window.MapUI?.updateSidebar(target._pointData);
+        }
+    };
+
+    if (pointsLayer) {
+        pointsLayer.addEventListener('click', handlePointClick);
     }
 
     function createLabel(txt, x, y, transform) {
@@ -317,5 +329,13 @@
     }
 
     loadLevel(0);
-    window.MapOverlay = { loadLevel };
+
+    window.MapOverlay = { 
+        loadLevel,
+        destroy: () => {
+            if (pointsLayer) pointsLayer.removeEventListener('click', handlePointClick);
+            if (window.MapEngine) window.MapEngine.onViewportChange = null;
+            canvas.remove();
+        }
+    };
 })();

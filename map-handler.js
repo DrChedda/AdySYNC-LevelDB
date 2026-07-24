@@ -1,11 +1,17 @@
 // map-handler.js
 (function() {
+    if (window.MapEngine?.destroy) {
+        window.MapEngine.destroy();
+    }
+
     const mapSurface = document.querySelector('.map-surface');
     const axisOverlay = document.querySelector('.axis-overlay');
     const coordOut = document.querySelector('[data-coordinate]');
     const axisV = document.querySelector('.axis-line--vertical');
     const axisH = document.querySelector('.axis-line--horizontal');
     const walls = document.querySelector('.walls-layer');
+
+    if (!mapSurface || !axisOverlay) return;
 
     const borders = {
         left: document.querySelector('.border-line--left'),
@@ -63,7 +69,8 @@
 
     function updateGrid(w, h) {
         if (gridCanvas.width !== w || gridCanvas.height !== h) {
-            gridCanvas.width = w; gridCanvas.height = h;
+            gridCanvas.width = w; 
+            gridCanvas.height = h;
         }
         gridCtx.clearRect(0, 0, w, h);
 
@@ -164,7 +171,7 @@
         coordOut.textContent = `X ${Math.round(x).toLocaleString('en-US')}, Z ${Math.round(z).toLocaleString('en-US')}`;
     }
 
-    mapSurface.addEventListener('wheel', (e) => {
+    const handleWheel = (e) => {
         e.preventDefault();
         const r = mapSurface.getBoundingClientRect();
         const target = toWorld(e.clientX - r.left, e.clientY - r.top, r);
@@ -174,33 +181,38 @@
         centerZ = clamp(target.z + ((e.clientX - r.left - r.width * 0.5) * studsPerPixel));
         centerX = clamp(target.x - ((e.clientY - r.top - r.height * 0.5) * studsPerPixel));
         applyTransform();
-    }, { passive: false });
+    };
 
-    mapSurface.addEventListener('pointerdown', (e) => {
+    const handlePointerDown = (e) => {
         if (e.button !== 0 || e.target.closest('.map-point-container, .ui-info-sidebar')) return;
         dragging = true;
         startX = e.clientX; startY = e.clientY;
         startCenterX = centerX; startCenterZ = centerZ;
         mapSurface.classList.add('dragging');
         mapSurface.setPointerCapture(e.pointerId);
-    });
+    };
 
-    mapSurface.addEventListener('pointermove', (e) => {
+    const handlePointerMove = (e) => {
         if (!dragging) return updateCoords(e.clientX, e.clientY);
         centerZ = clamp(startCenterZ + ((e.clientX - startX) * studsPerPixel));
         centerX = clamp(startCenterX - ((e.clientY - startY) * studsPerPixel));
         applyTransform();
         updateCoords(e.clientX, e.clientY);
-    });
+    };
 
     const stopDrag = () => { dragging = false; mapSurface.classList.remove('dragging'); };
+    const handlePointerLeave = () => !dragging && coordOut && (coordOut.textContent = "X -----, Z -----");
+
+    mapSurface.addEventListener('wheel', handleWheel, { passive: false });
+    mapSurface.addEventListener('pointerdown', handlePointerDown);
+    mapSurface.addEventListener('pointermove', handlePointerMove);
     ['pointerup', 'pointercancel'].forEach(evt => mapSurface.addEventListener(evt, stopDrag));
-    mapSurface.addEventListener('pointerleave', () => !dragging && (coordOut.textContent = "X -----, Z -----"));
+    mapSurface.addEventListener('pointerleave', handlePointerLeave);
+    window.addEventListener('resize', applyTransform);
 
     const rect = mapSurface.getBoundingClientRect();
     studsPerPixel = 20000 / (Math.min(rect.width, rect.height) || 800);
-    window.addEventListener('resize', applyTransform);
-    setTimeout(applyTransform, 100);
+    const initTimeout = setTimeout(applyTransform, 100);
 
     window.MapEngine = {
         applyTransform,
@@ -212,6 +224,16 @@
             if (x !== undefined) centerX = clamp(x);
             if (z !== undefined) centerZ = clamp(z);
         },
-        get LIMIT() { return LIMIT; }
+        get LIMIT() { return LIMIT; },
+        destroy: () => {
+            clearTimeout(initTimeout);
+            window.removeEventListener('resize', applyTransform);
+            mapSurface.removeEventListener('wheel', handleWheel);
+            mapSurface.removeEventListener('pointerdown', handlePointerDown);
+            mapSurface.removeEventListener('pointermove', handlePointerMove);
+            ['pointerup', 'pointercancel'].forEach(evt => mapSurface.removeEventListener(evt, stopDrag));
+            mapSurface.removeEventListener('pointerleave', handlePointerLeave);
+            gridCanvas.remove();
+        }
     };
 })();

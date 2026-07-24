@@ -1,5 +1,9 @@
 // ui-controller.js
 (function() {
+    if (window.MapUI?.destroy) {
+        window.MapUI.destroy();
+    }
+
     const AVAILABLE_LEVELS = [
         { id: '0', label: 'Level 0' },
         { id: '0.3', label: 'Level 0.3', parent: '0' },
@@ -44,7 +48,10 @@
         if (descEl) descEl.textContent = data.description || 'No description provided.';
 
         if (trelloContainer) {
-            trelloContainer.innerHTML = '';
+            // Safely clear old children
+            while (trelloContainer.firstChild) {
+                trelloContainer.removeChild(trelloContainer.firstChild);
+            }
 
             if (data.trelloUrl) {
                 const quote = document.createElement('blockquote');
@@ -76,6 +83,8 @@
             return lvl.parent === activeRoot;
         });
 
+        const frag = document.createDocumentFragment();
+
         visibleLevels.forEach((lvl) => {
             const btn = document.createElement('button');
             const isActive = lvl.id === currentActiveLevel;
@@ -85,23 +94,40 @@
             btn.setAttribute('data-level', lvl.id);
             btn.textContent = lvl.label;
 
-            btn.addEventListener('click', () => {
-                currentActiveLevel = lvl.id;
-
-                if (window.MapOverlay?.loadLevel) {
-                    window.MapOverlay.loadLevel(lvl.id);
-                }
-
-                renderLevelButtons();
-            });
-
-            levelGroupContainer.appendChild(btn);
+            frag.appendChild(btn);
         });
+
+        levelGroupContainer.appendChild(frag);
+    }
+
+    const handleContainerClick = (e) => {
+        const btn = e.target.closest('.ui-level-btn');
+        if (!btn) return;
+
+        const levelId = btn.getAttribute('data-level');
+        if (!levelId || levelId === currentActiveLevel) return;
+
+        currentActiveLevel = levelId;
+
+        if (window.MapOverlay?.loadLevel) {
+            window.MapOverlay.loadLevel(levelId);
+        }
+
+        renderLevelButtons();
+    };
+
+    if (levelGroupContainer) {
+        levelGroupContainer.addEventListener('click', handleContainerClick);
     }
 
     renderLevelButtons();
 
     window.MapUI = {
-        updateSidebar
+        updateSidebar,
+        destroy: () => {
+            if (levelGroupContainer) {
+                levelGroupContainer.removeEventListener('click', handleContainerClick);
+            }
+        }
     };
 })();
