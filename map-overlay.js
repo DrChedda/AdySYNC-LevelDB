@@ -10,6 +10,66 @@
     const labelsLayer = document.querySelector('.labels-layer');
 
     if (!wallsLayer) return;
+    const LayerManager = (() => {
+        const layers = new Map();
+
+        function define(id, opts = {}) {
+            layers.set(id, {
+                name: opts.name || id,
+                enabled: opts.enabled !== false,
+                minVisStuds: opts.minVisStuds ?? 0,
+                maxVisStuds: opts.maxVisStuds ?? Infinity,
+            });
+            return LayerManager;
+        }
+
+        function isVisible(id, visStuds) {
+            const layer = layers.get(id) ?? layers.get('default');
+            if (!layer) return true; // unknown id, no default defined -> fail open
+            return layer.enabled && visStuds >= layer.minVisStuds && visStuds <= layer.maxVisStuds;
+        }
+
+        function setEnabled(id, enabled) {
+            const layer = layers.get(id);
+            if (layer) layer.enabled = enabled;
+        }
+
+        function toggle(id) {
+            const layer = layers.get(id);
+            if (layer) { layer.enabled = !layer.enabled; return layer.enabled; }
+        }
+
+        function has(id) { return layers.has(id); }
+
+        function list() {
+            return [...layers.entries()].map(([id, l]) => ({ id, ...l }));
+        }
+
+        return { define, isVisible, setEnabled, toggle, has, list };
+    })();
+
+    // Default layers — these reproduce your old behavior exactly, just
+    // named and centralized instead of scattered across 4 conditionals.
+    // Add/adjust/remove layers here; nothing else in the file needs to change.
+    LayerManager
+        .define('default',  { maxVisStuds: Infinity })       // always visible unless disabled
+        .define('walls',    { maxVisStuds: Infinity })
+        .define('overview', { maxVisStuds: Infinity })       // old: layer >= 2
+        .define('regional', { maxVisStuds: 2e7 })            // old: layer >= 1
+        .define('detail',   { maxVisStuds: 2e5 })            // old: layer 0 / undefined
+        .define('sectors',  { maxVisStuds: 2e7 })
+        .define('border',   { maxVisStuds: 2e7 })
+        .define('grid',     { maxVisStuds: Infinity });
+
+    // Backward-compat shim: old level JSON may still have numeric `layer`
+    // values (0/1/2) on points instead of string ids. Map those onto the
+    // new named layers so existing level data keeps working unchanged.
+    const LEGACY_NUMERIC_LAYER = { 0: 'detail', 1: 'regional', 2: 'overview' };
+    function resolveLayerId(rawLayer) {
+        if (rawLayer == null) return 'default';
+        if (typeof rawLayer === 'number') return LEGACY_NUMERIC_LAYER[rawLayer] ?? 'overview';
+        return rawLayer; // already a string id
+    }
 
     const canvas = Object.assign(document.createElement('canvas'), { className: 'walls-canvas' });
     Object.assign(canvas.style, { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none' });
@@ -21,7 +81,7 @@
     const columnLetterCache = new Map();
     const getColumnLetter = col => {
         if (columnLetterCache.has(col)) return columnLetterCache.get(col);
-        
+
         if (columnLetterCache.size > 2000) columnLetterCache.clear();
 
         const sign = col < 0 ? '-' : '';
@@ -73,7 +133,7 @@
 
         if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 
-        const sCX = w * 0.5; 
+        const sCX = w * 0.5;
         const sCY = h * 0.5;
         const invSpp = 1 / spp;
         const visStuds = w * spp;
@@ -86,15 +146,24 @@
         const inView = (x, y, pad = 0) => x >= -pad && x <= w + pad && y >= -pad && y <= h + pad;
 
         ctx.clearRect(0, 0, w, h);
-        if (wallData?.length > 0) {
+
+        // Walls: each point can optionally carry its own `layer`; falls
+        // back to the level-wide default (still 'walls' if unspecified).
+        const wallsLevelLayer = currentLevelData?.wallsLayer || 'walls';
+        if (wallData?.length > 0 && LayerManager.isVisible(wallsLevelLayer, visStuds)) {
             const wallWidth = 3;
             ctx.lineWidth = wallWidth;
             ctx.strokeStyle = '#4378c9';
             ctx.fillStyle = '#4378c9';
 
+            const wallVisible = p => {
+                if (!p || p.x === undefined || Math.abs(p.x) > LIMIT || Math.abs(p.z) > LIMIT) return false;
+                return LayerManager.isVisible(resolveLayerId(p.layer ?? wallsLevelLayer), visStuds);
+            };
+
             if (wallData.length === 1) {
                 const p = wallData[0];
-                if (p && p.x !== undefined && p.z !== undefined && Math.abs(p.x) <= LIMIT && Math.abs(p.z) <= LIMIT) {
+                if (wallVisible(p)) {
                     const posX = toX(p.z), posY = toY(p.x);
                     if (inView(posX, posY, wallWidth)) {
                         ctx.beginPath();
@@ -107,13 +176,13 @@
 
                 for (let i = 0, len = wallData.length; i < len; i++) {
                     const curr = wallData[i];
-                    if (!curr || curr.x === undefined || Math.abs(curr.x) > LIMIT || Math.abs(curr.z) > LIMIT) continue;
+                    if (!wallVisible(curr)) continue;
 
                     const next = wallData[i + 1];
                     const prev = wallData[i - 1];
                     const p1X = toX(curr.z), p1Y = toY(curr.x);
-                    const hasNext = next && next.x !== undefined && Math.abs(next.x) <= LIMIT && Math.abs(next.z) <= LIMIT;
-                    const hasPrev = prev && prev.x !== undefined && Math.abs(prev.x) <= LIMIT && Math.abs(prev.z) <= LIMIT;
+                    const hasNext = wallVisible(next);
+                    const hasPrev = wallVisible(prev);
 
                     if (!hasNext && !hasPrev) {
                         if (inView(p1X, p1Y, wallWidth)) {
@@ -145,15 +214,17 @@
             const bBox = labelsLayer.querySelector('.map-boundary-box');
             if (bBox) {
                 const border = currentLevelData?.worldBorder;
-                if (border > 0 && visStuds <= 2e7) {
+                const borderLayerId = currentLevelData?.borderLayer || 'border';
+                if (border > 0 && LayerManager.isVisible(borderLayerId, visStuds)) {
                     const bL = toX(border), bR = toX(-border), bT = toY(-border), bB = toY(border);
                     Object.assign(bBox.style, { left: `${bL}px`, top: `${bT}px`, width: `${bR - bL}px`, height: `${bB - bT}px`, display: 'block' });
                 } else bBox.style.display = 'none';
             }
 
-            if (currentLevelData?.hasSectors && visStuds < 2e7) {
-                const step = 1e6; 
-                const referenceSPP = 2000; 
+            const sectorsLayerId = currentLevelData?.sectorsLayer || 'sectors';
+            if (currentLevelData?.hasSectors && LayerManager.isVisible(sectorsLayerId, visStuds)) {
+                const step = 1e6;
+                const referenceSPP = 2000;
                 const scale = Math.max(0.05, Math.min(5.0, referenceSPP * invSpp));
                 const sR = Math.floor((minVisX + 5e5) / step), eR = Math.floor((maxVisX + 5e5) / step);
                 const sC = Math.floor((minVisZ + 5e5) / step), eC = Math.floor((maxVisZ + 5e5) / step);
@@ -171,14 +242,14 @@
                                 const lbl = document.createElement('div');
                                 lbl.className = 'sector-title-label';
                                 lbl.textContent = `Sector ${sectorNamesData[secId] ? sectorNamesData[secId] + ` ${secId}` : secId}`;
-                                
-                                Object.assign(lbl.style, { 
-                                    position: 'absolute', 
-                                    left: `${posX}px`, 
-                                    top: `${posY}px`, 
+
+                                Object.assign(lbl.style, {
+                                    position: 'absolute',
+                                    left: `${posX}px`,
+                                    top: `${posY}px`,
                                     transformOrigin: 'top left',
-                                    transform: `scale(${scale}) translate(4px, 4px)`, 
-                                    pointerEvents: 'none' 
+                                    transform: `scale(${scale}) translate(4px, 4px)`,
+                                    pointerEvents: 'none'
                                 });
                                 frag.appendChild(lbl);
                             }
@@ -188,23 +259,26 @@
                 }
             }
 
-            const dynStep = getDynamicStep(spp), edge = 25;
-            const aZ = toX(0), aX = toY(0);
+            const gridLayerId = 'grid';
+            if (LayerManager.isVisible(gridLayerId, visStuds)) {
+                const dynStep = getDynamicStep(spp), edge = 25;
+                const aZ = toX(0), aX = toY(0);
 
-            if (aZ > 0 && aZ < w) {
-                for (let xVal = Math.ceil((c.x - halfVisH) / dynStep) * dynStep; xVal <= Math.floor((c.x + halfVisH) / dynStep) * dynStep; xVal += dynStep) {
-                    if (!xVal || Math.abs(xVal) > LIMIT) continue;
-                    const posY = toY(xVal);
-                    if (posY > edge && posY < h - edge) createLabel(`X ${xVal.toLocaleString()}`, aZ - 8, posY, 'translate(-100%, -50%)');
+                if (aZ > 0 && aZ < w) {
+                    for (let xVal = Math.ceil((c.x - halfVisH) / dynStep) * dynStep; xVal <= Math.floor((c.x + halfVisH) / dynStep) * dynStep; xVal += dynStep) {
+                        if (!xVal || Math.abs(xVal) > LIMIT) continue;
+                        const posY = toY(xVal);
+                        if (posY > edge && posY < h - edge) createLabel(`X ${xVal.toLocaleString()}`, aZ - 8, posY, 'translate(-100%, -50%)');
+                    }
                 }
-            }
 
-            if (aX > 0 && aX < h) {
-                for (let zVal = Math.ceil((c.z - halfVisW) / dynStep) * dynStep; zVal <= Math.floor((c.z + halfVisW) / dynStep) * dynStep; zVal += dynStep) {
-                    if (Math.abs(zVal) > LIMIT) continue;
-                    const posX = toX(zVal);
-                    if (posX > edge && posX < w - edge) {
-                        createLabel(zVal === 0 ? "0" : `Z ${zVal.toLocaleString()}`, posX - (zVal === 0 ? 8 : 0), aX + 8, zVal === 0 ? 'translate(-100%, 0%)' : 'translateX(-50%)');
+                if (aX > 0 && aX < h) {
+                    for (let zVal = Math.ceil((c.z - halfVisW) / dynStep) * dynStep; zVal <= Math.floor((c.z + halfVisW) / dynStep) * dynStep; zVal += dynStep) {
+                        if (Math.abs(zVal) > LIMIT) continue;
+                        const posX = toX(zVal);
+                        if (posX > edge && posX < w - edge) {
+                            createLabel(zVal === 0 ? "0" : `Z ${zVal.toLocaleString()}`, posX - (zVal === 0 ? 8 : 0), aX + 8, zVal === 0 ? 'translate(-100%, 0%)' : 'translateX(-50%)');
+                        }
                     }
                 }
             }
@@ -216,17 +290,16 @@
                 const frag = document.createDocumentFragment();
                 pointsData.forEach(p => {
                     if (!p || p.x === undefined || Math.abs(p.x) > LIMIT || Math.abs(p.z) > LIMIT) return;
-                    
                     if (p.x < minVisX || p.x > maxVisX || p.z < minVisZ || p.z > maxVisZ) return;
 
-                    const layer = p.layer ?? 0;
-                    if ((visStuds > 2e7 && layer < 2) || (visStuds > 2e5 && visStuds <= 2e7 && layer < 1)) return;
+                    const layerId = resolveLayerId(p.layer);
+                    if (!LayerManager.isVisible(layerId, visStuds)) return;
 
                     const pX = toX(p.z), pY = toY(p.x);
 
                     const cont = document.createElement('div');
                     cont.className = 'map-point-container';
-                    cont._pointData = p; 
+                    cont._pointData = p;
                     Object.assign(cont.style, { position: 'absolute', left: `${pX}px`, top: `${pY}px`, cursor: 'pointer', pointerEvents: 'auto' });
 
                     const marker = document.createElement('div');
@@ -298,7 +371,7 @@
                     const mapRect = wallsLayer.parentElement.getBoundingClientRect();
                     const minDim = Math.min(mapRect.width, mapRect.height) || 800;
 
-                    let maxWallDist = 0; 
+                    let maxWallDist = 0;
                     if (currentLevelData.walls?.length) {
                         currentLevelData.walls.forEach(w => {
                             if (w && w.x !== undefined && w.z !== undefined) {
@@ -306,7 +379,7 @@
                             }
                         });
                     }
-                    
+
                     const effectiveWallDist = Math.max(maxWallDist, 500);
 
                     window.MapEngine.maxStudsPerPixel = ((currentLevelData.mapSize || activeLimit) * 2.2) / minDim;
@@ -330,8 +403,10 @@
 
     loadLevel(0);
 
-    window.MapOverlay = { 
+    window.MapOverlay = {
         loadLevel,
+        layers: LayerManager, // e.g. MapOverlay.layers.setEnabled('sectors', false); renderActiveViewportContent();
+        refresh: renderActiveViewportContent,
         destroy: () => {
             if (pointsLayer) pointsLayer.removeEventListener('click', handlePointClick);
             if (window.MapEngine) window.MapEngine.onViewportChange = null;

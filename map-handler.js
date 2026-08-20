@@ -27,6 +27,11 @@
 
     let LIMIT = 1e9, centerX = 0, centerZ = 0, studsPerPixel = 10;
     let dragging = false, startX = 0, startY = 0, startCenterX = 0, startCenterZ = 0, isPending = false;
+    let cachedRect = null;
+    function getRect() {
+        if (!cachedRect) cachedRect = mapSurface.getBoundingClientRect();
+        return cachedRect;
+    }
 
     const clamp = (val, min = -LIMIT, max = LIMIT) => Math.max(min, Math.min(max, val));
 
@@ -52,7 +57,7 @@
         if (isPending) return;
         isPending = true;
         requestAnimationFrame(() => {
-            const rect = mapSurface.getBoundingClientRect();
+            const rect = getRect();
             centerX = clamp(centerX);
             centerZ = clamp(centerZ);
             updateGrid(rect.width, rect.height);
@@ -69,7 +74,7 @@
 
     function updateGrid(w, h) {
         if (gridCanvas.width !== w || gridCanvas.height !== h) {
-            gridCanvas.width = w; 
+            gridCanvas.width = w;
             gridCanvas.height = h;
         }
         gridCtx.clearRect(0, 0, w, h);
@@ -127,53 +132,56 @@
 
         const isMajorIndex = i => ((i - 2) % 5 + 5) % 5 === 0;
 
-        for (let pass = 0; pass < 2; pass++) {
-            gridCtx.beginPath();
-            gridCtx.strokeStyle = pass ? 'rgba(141, 129, 109, 0.25)' : 'rgba(141, 129, 109, 0.08)';
-            gridCtx.lineWidth = pass ? 2 : 1;
+        // Single pass per axis: bucket each line into a minor/major Path2D
+        // instead of re-scanning the whole index range twice (once per pass,
+        // as the old two-pass version did). Halves the loop iterations for
+        // the same picture.
+        const minorPath = new Path2D();
+        const majorPath = new Path2D();
 
-            for (let i = startIdxZ; i <= endIdxZ; i++) {
-                const z = (i + 0.5) * minorStep;
-                if (Math.abs(z) > LIMIT) continue;
+        for (let i = startIdxZ; i <= endIdxZ; i++) {
+            const z = (i + 0.5) * minorStep;
+            if (Math.abs(z) > LIMIT) continue;
 
-                const isMajorStep = isMajorIndex(i);
-                if ((pass && isMajorStep) || (!pass && !isMajorStep)) {
-                    const sX = toScreenX(z);
-                    if (sX >= bL && sX <= bR) {
-                        gridCtx.moveTo(sX, cT);
-                        gridCtx.lineTo(sX, cB);
-                    }
-                }
-            }
+            const sX = toScreenX(z);
+            if (sX < bL || sX > bR) continue;
 
-            for (let i = startIdxX; i <= endIdxX; i++) {
-                const x = (i + 0.5) * minorStep;
-                if (Math.abs(x) > LIMIT) continue;
-
-                const isMajorStep = isMajorIndex(i);
-                if ((pass && isMajorStep) || (!pass && !isMajorStep)) {
-                    const sY = toScreenY(x);
-                    if (sY >= bB && sY <= bT) {
-                        gridCtx.moveTo(cL, sY);
-                        gridCtx.lineTo(cR, sY);
-                    }
-                }
-            }
-
-            gridCtx.stroke();
+            const path = isMajorIndex(i) ? majorPath : minorPath;
+            path.moveTo(sX, cT);
+            path.lineTo(sX, cB);
         }
+
+        for (let i = startIdxX; i <= endIdxX; i++) {
+            const x = (i + 0.5) * minorStep;
+            if (Math.abs(x) > LIMIT) continue;
+
+            const sY = toScreenY(x);
+            if (sY < bB || sY > bT) continue;
+
+            const path = isMajorIndex(i) ? majorPath : minorPath;
+            path.moveTo(cL, sY);
+            path.lineTo(cR, sY);
+        }
+
+        gridCtx.lineWidth = 1;
+        gridCtx.strokeStyle = 'rgba(141, 129, 109, 0.08)';
+        gridCtx.stroke(minorPath);
+
+        gridCtx.lineWidth = 2;
+        gridCtx.strokeStyle = 'rgba(141, 129, 109, 0.25)';
+        gridCtx.stroke(majorPath);
     }
 
     function updateCoords(eX, eY) {
         if (!coordOut) return;
-        const r = mapSurface.getBoundingClientRect();
+        const r = getRect();
         const { x, z } = toWorld(eX - r.left, eY - r.top, r);
         coordOut.textContent = `X ${Math.round(x).toLocaleString('en-US')}, Z ${Math.round(z).toLocaleString('en-US')}`;
     }
 
     const handleWheel = (e) => {
         e.preventDefault();
-        const r = mapSurface.getBoundingClientRect();
+        const r = getRect();
         const target = toWorld(e.clientX - r.left, e.clientY - r.top, r);
         const zoomLimits = [window.MapEngine?.minStudsPerPixel || 0.05, window.MapEngine?.maxStudsPerPixel || 4e6];
 
@@ -208,9 +216,18 @@
     mapSurface.addEventListener('pointermove', handlePointerMove);
     ['pointerup', 'pointercancel'].forEach(evt => mapSurface.addEventListener(evt, stopDrag));
     mapSurface.addEventListener('pointerleave', handlePointerLeave);
-    window.addEventListener('resize', applyTransform);
 
-    const rect = mapSurface.getBoundingClientRect();
+    // ResizeObserver instead of window 'resize': catches container-only
+    // resizes (sidebar toggles, flex/grid reflow) that a window resize
+    // listener would miss, and is the single place that invalidates the
+    // cached rect from getRect().
+    const resizeObserver = new ResizeObserver(() => {
+        cachedRect = null;
+        applyTransform();
+    });
+    resizeObserver.observe(mapSurface);
+
+    const rect = getRect();
     studsPerPixel = 20000 / (Math.min(rect.width, rect.height) || 800);
     const initTimeout = setTimeout(applyTransform, 100);
 
@@ -227,7 +244,7 @@
         get LIMIT() { return LIMIT; },
         destroy: () => {
             clearTimeout(initTimeout);
-            window.removeEventListener('resize', applyTransform);
+            resizeObserver.disconnect();
             mapSurface.removeEventListener('wheel', handleWheel);
             mapSurface.removeEventListener('pointerdown', handlePointerDown);
             mapSurface.removeEventListener('pointermove', handlePointerMove);
