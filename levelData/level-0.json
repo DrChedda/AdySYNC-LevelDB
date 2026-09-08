@@ -141,7 +141,7 @@
             "x": -1524,
             "z": -1777,
             "name": "Beacon",
-            "layer": 0,
+            "layer": 2,
             "description": "Its beacon there is a beacon icon visible from across the inside of the infinitelands walls."
         },
         {
